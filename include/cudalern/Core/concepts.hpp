@@ -9,6 +9,12 @@ template <class T>
 concept SizeValue = std::is_same_v<T, std::size_t> || std::is_same_v<T, size_t> ||
                     std::is_same_v<T, unsigned int>;
 
+template <typename T>
+concept CudaCompatible = std::is_trivially_copyable_v<T> && !std::is_pointer_v<T>;
+
+template <typename T>
+concept Arithmetic = std::is_arithmetic_v<T>;
+
 template <typename R>
 concept Range = std::ranges::range<R>;
 

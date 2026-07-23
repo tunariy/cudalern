@@ -1,7 +1,12 @@
+#pragma once
+
+#include <cudalern/Core/err.hpp>
+
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
 #include <driver_types.h>
 
+#include <benchtools/Loggers/Logger.hpp>
 #include <benchtools/Loggers/Logger.hpp>
 
 #include <cstddef>
@@ -33,71 +38,90 @@ enum class memcpyKind : uint8_t {
         return "HostToHost";
     }
     }
-    return "Unknown copy kind!";
+    assert(false && "Invalid memcpyKind!");
 }
 
 template <class T>
-    requires(std::is_integral_v<T>)
+    requires(std::is_integral_v<T> || std::is_floating_point_v<T>)
 [[nodiscard]] T* allocateDevice(std::size_t size,
-                                cudaStream_t* stream = nullptr) noexcept {
+                                cudaStream_t stream = nullptr) noexcept {
     T* temp;
     auto err = cudaMalloc(&temp, size * sizeof(T));
-    if (err) BENCHTOOLS_CRITICAL("Failed to allocate at device: " + err);
+    if (err) BENCHTOOLS_CRITICAL("Failed to allocate at device! " + CUDALERN_ERROR(err));
     return (!err ? temp : nullptr);
 }
 
 template <class T>
-    requires(std::is_integral_v<T>)
-[[nodiscard]] T* allocateHost(std::size_t size, cudaStream_t* stream = nullptr) noexcept {
+    requires(std::is_integral_v<T> || std::is_floating_point_v<T>)
+[[nodiscard]] T* allocateHost(std::size_t size, cudaStream_t stream = nullptr) noexcept {
     T* temp;
     auto err = cudaMallocHost(&temp, size * sizeof(T));
-    if (err) BENCHTOOLS_CRITICAL("Failed to allocate at host: " + err);
+    if (err) BENCHTOOLS_CRITICAL("Failed to allocate at host! " + CUDALERN_ERROR(err));
     return (!err ? temp : nullptr);
 }
 
 template <class T>
-    requires(std::is_integral_v<T>)
-void deallocateDevice(const T* ptr, cudaStream_t* stream = nullptr) {
-    auto err = cudaFree((void*)ptr);
-    if (err) BENCHTOOLS_CRITICAL("Failed to free at device address");
+    requires(std::is_integral_v<T> || std::is_floating_point_v<T>)
+[[nodiscard]] T* allocatePinned(std::size_t size,
+                                cudaStream_t stream = nullptr) noexcept {
+    T* temp;
+    auto err = cudaMallocManaged(&temp, size * sizeof(T));
+    if (err) BENCHTOOLS_CRITICAL("Failed to allocate pinned! " + CUDALERN_ERROR(err));
+    return (!err ? temp : nullptr);
 }
 
 template <class T>
-    requires(std::is_integral_v<T>)
-void deallocateHost(const T* ptr, cudaStream_t* stream = nullptr) {
+    requires(std::is_integral_v<T> || std::is_floating_point_v<T>)
+void deallocateDevice(const T* ptr, cudaStream_t stream = nullptr) {
+    auto err = cudaFreeAsync((void*)ptr, stream);
+    if (err)
+        BENCHTOOLS_CRITICAL("Failed to free at device address!" + CUDALERN_ERROR(err));
+}
+
+template <class T>
+    requires(std::is_integral_v<T> || std::is_floating_point_v<T>)
+void deallocateHost(const T* ptr) {
     auto err = cudaFreeHost((void*)ptr);
-    if (err) BENCHTOOLS_CRITICAL("Failed to free at host address");
+    if (err) BENCHTOOLS_CRITICAL("Failed to free at host address!" + CUDALERN_ERROR(err));
 }
 
 template <class T>
-    requires(std::is_integral_v<T>)
+    requires(std::is_integral_v<T> || std::is_floating_point_v<T>)
+void deallocatePinned(const T* ptr) {
+    auto err = cudaFree((void*)ptr);
+    if (err) BENCHTOOLS_CRITICAL("Failed to free at host address!" + CUDALERN_ERROR(err));
+}
+
+template <class T>
+    requires(std::is_integral_v<T> || std::is_floating_point_v<T>)
 [[nodiscard]] cudaError_t memcpy(const T* dst, const T* src, const std::size_t n,
-                                 memcpyKind copyKind, cudaStream_t* stream = nullptr) {
+                                 memcpyKind copyKind, cudaStream_t stream = nullptr) {
     cudaError_t err;
     switch (copyKind) {
     case memcpyKind::HostToDevice: {
-        err = cudaMemcpy((void*)dst, (void*)src, n * sizeof(T),
-                         cudaMemcpyKind::cudaMemcpyHostToDevice);
+        err = cudaMemcpyAsync((void*)dst, (void*)src, n * sizeof(T),
+                              cudaMemcpyKind::cudaMemcpyHostToDevice);
         break;
     }
     case memcpyKind::DeviceToHost: {
-        err = cudaMemcpy((void*)dst, (void*)src, n * sizeof(T),
-                         cudaMemcpyKind::cudaMemcpyDeviceToHost);
+        err = cudaMemcpyAsync((void*)dst, (void*)src, n * sizeof(T),
+                              cudaMemcpyKind::cudaMemcpyDeviceToHost);
         break;
     }
     case memcpyKind::DeviceToDevice: {
-        err = cudaMemcpy((void*)dst, (void*)src, n * sizeof(T),
-                         cudaMemcpyKind::cudaMemcpyDeviceToDevice);
+        err = cudaMemcpyAsync((void*)dst, (void*)src, n * sizeof(T),
+                              cudaMemcpyKind::cudaMemcpyDeviceToDevice);
         break;
     }
     case memcpyKind::HostToHost: {
-        err = cudaMemcpy((void*)dst, (void*)src, n * sizeof(T),
-                         cudaMemcpyKind::cudaMemcpyHostToHost);
+        err = cudaMemcpyAsync((void*)dst, (void*)src, n * sizeof(T),
+                              cudaMemcpyKind::cudaMemcpyHostToHost);
         break;
     }
     }
     if (err)
-        BENCHTOOLS_CRITICAL("Memcpy failed for" + format(copyKind) + std::to_string(err));
+        BENCHTOOLS_CRITICAL("Memcpy failed for: " + format(copyKind) + " " +
+                            CUDALERN_ERROR(err));
     return err;
 }
 

@@ -33,6 +33,7 @@ target_sources(cudalern
     PRIVATE
         cudalern/kernel.cu
         cudalern/core.cu
+        ABI/stream.cpp
         # add other .cu or .cpp files here if any
 )
 
