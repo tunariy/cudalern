@@ -112,7 +112,9 @@ __host__ void CUDAContextInit(int device) {
     }
 
     BENCHTOOLS_INFO("Initializing context for device: " + std::to_string(device));
-    cudaLaunchKernel(kernelWarmup, 1, 1, nullptr);
+    
+    // Warmup the kernel
+    cudaLaunchKernel(kernel::emptyCall, 1, 1, nullptr);
     cudaDeviceSynchronize();
 
     cudaStatus = cudaGetDeviceProperties(&deviceProps, 0);

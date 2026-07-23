@@ -1,14 +1,9 @@
-/* NOTE TO SELF
- * shit is complicated we need a ND array with view, insert, replace etc. functionalities
- * nd array should be on the device not host right?
- * how should the device handle it...
- */
+#include "cudalern/Core/core.cuh"
+#include <cudalern/Containers/NdArray.hpp>
 
 #include "benchtools/Loggers/Logger.hpp"
-#include "cudalern/Core/core.cuh"
 
 #include <array>
-#include <cudalern/Containers/NdArray.hpp>
 
 #include <iostream>
 #include <vector>
@@ -37,6 +32,8 @@ auto main() -> int {
 
     auto t = nd.release();
     std::clog << t;
+
+    auto ndddddd = cudalern::NdArray<int, 3>::pinned(dims);
 #endif
     /*
      * SPACING

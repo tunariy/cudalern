@@ -41,7 +41,7 @@ auto Stream::get() const noexcept -> cudaStream_t {
     return m_Stream ? *m_Stream : nullptr;
 }
 
-auto Stream::synchronize() -> cudaError_t {
+auto Stream::synchronize() const -> cudaError_t {
     if (!m_Stream || !*m_Stream) return cudaErrorInvalidValue;
     return cudaStreamSynchronize(*m_Stream);
 }

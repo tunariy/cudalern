@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cudalern/Core/concepts.hpp"
 #include <cudalern/Core/err.hpp>
 
 #include <cuda_runtime.h>
@@ -7,12 +8,9 @@
 #include <driver_types.h>
 
 #include <benchtools/Loggers/Logger.hpp>
-#include <benchtools/Loggers/Logger.hpp>
 
 #include <cstddef>
 #include <cstdint>
-#include <string>
-#include <type_traits>
 
 namespace cudalern {
 
@@ -23,7 +21,7 @@ enum class memcpyKind : uint8_t {
     HostToHost,
 };
 
-[[nodiscard]] inline std::string format(const memcpyKind copyKind) {
+[[nodiscard]] inline auto format(const memcpyKind copyKind) -> std::string {
     switch (copyKind) {
     case memcpyKind::HostToDevice: {
         return "HostToDevice";
@@ -42,7 +40,7 @@ enum class memcpyKind : uint8_t {
 }
 
 template <class T>
-    requires(std::is_integral_v<T> || std::is_floating_point_v<T>)
+    requires(CudaCompatible<T>)
 [[nodiscard]] T* allocateDevice(std::size_t size,
                                 cudaStream_t stream = nullptr) noexcept {
     T* temp;
@@ -52,8 +50,9 @@ template <class T>
 }
 
 template <class T>
-    requires(std::is_integral_v<T> || std::is_floating_point_v<T>)
-[[nodiscard]] T* allocateHost(std::size_t size, cudaStream_t stream = nullptr) noexcept {
+    requires(CudaCompatible<T>)
+[[nodiscard]] T* allocatePinned(std::size_t size,
+                                cudaStream_t stream = nullptr) noexcept {
     T* temp;
     auto err = cudaMallocHost(&temp, size * sizeof(T));
     if (err) BENCHTOOLS_CRITICAL("Failed to allocate at host! " + CUDALERN_ERROR(err));
@@ -61,9 +60,9 @@ template <class T>
 }
 
 template <class T>
-    requires(std::is_integral_v<T> || std::is_floating_point_v<T>)
-[[nodiscard]] T* allocatePinned(std::size_t size,
-                                cudaStream_t stream = nullptr) noexcept {
+    requires(CudaCompatible<T>)
+[[nodiscard]] T* allocateManaged(std::size_t size,
+                                 cudaStream_t stream = nullptr) noexcept {
     T* temp;
     auto err = cudaMallocManaged(&temp, size * sizeof(T));
     if (err) BENCHTOOLS_CRITICAL("Failed to allocate pinned! " + CUDALERN_ERROR(err));
@@ -71,7 +70,7 @@ template <class T>
 }
 
 template <class T>
-    requires(std::is_integral_v<T> || std::is_floating_point_v<T>)
+    requires(CudaCompatible<T>)
 void deallocateDevice(const T* ptr, cudaStream_t stream = nullptr) {
     auto err = cudaFreeAsync((void*)ptr, stream);
     if (err)
@@ -79,23 +78,24 @@ void deallocateDevice(const T* ptr, cudaStream_t stream = nullptr) {
 }
 
 template <class T>
-    requires(std::is_integral_v<T> || std::is_floating_point_v<T>)
-void deallocateHost(const T* ptr) {
+    requires(CudaCompatible<T>)
+void deallocatePinned(const T* ptr) {
     auto err = cudaFreeHost((void*)ptr);
     if (err) BENCHTOOLS_CRITICAL("Failed to free at host address!" + CUDALERN_ERROR(err));
 }
 
 template <class T>
-    requires(std::is_integral_v<T> || std::is_floating_point_v<T>)
-void deallocatePinned(const T* ptr) {
+    requires(CudaCompatible<T>)
+void deallocateManaged(const T* ptr) {
     auto err = cudaFree((void*)ptr);
     if (err) BENCHTOOLS_CRITICAL("Failed to free at host address!" + CUDALERN_ERROR(err));
 }
 
 template <class T>
-    requires(std::is_integral_v<T> || std::is_floating_point_v<T>)
-[[nodiscard]] cudaError_t memcpy(const T* dst, const T* src, const std::size_t n,
-                                 memcpyKind copyKind, cudaStream_t stream = nullptr) {
+    requires(CudaCompatible<T>)
+[[nodiscard]] auto memcpy(const T* dst, const T* src, const std::size_t n,
+                          memcpyKind copyKind, cudaStream_t stream = nullptr) noexcept
+    -> cudaError_t {
     cudaError_t err;
     switch (copyKind) {
     case memcpyKind::HostToDevice: {
@@ -123,6 +123,13 @@ template <class T>
         BENCHTOOLS_CRITICAL("Memcpy failed for: " + format(copyKind) + " " +
                             CUDALERN_ERROR(err));
     return err;
+}
+
+template <class T>
+    requires(CudaCompatible<T>)
+[[nodiscard]] auto memset(const T* ptr, T val, std::size_t count,
+                          cudaStream_t stream = nullptr) noexcept -> cudaError_t {
+    return cudaMemsetAsync(ptr, val, count, stream);
 }
 
 }  // namespace cudalern

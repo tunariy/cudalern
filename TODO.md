@@ -16,52 +16,50 @@
 
 - [ ] Design and implement C++-conforming CUDA allocator
   - [ ] deallocate_n???: `void deallocate(T* ptr, std::size_t n)`
+    - isn't even possible unless a wrapper is created for cuda array type(s)????
 
 ### Type Traits and Concepts
 
 - [x] Add concepts for valid NdArray element types
-- [ ] Add more compile-time checks: `static_assert(CudaCompatible<T>, "T must be trivially copyable");`
+- [x] Add more compile-time checks: `static_assert(CudaCompatible<T>, "T must be trivially copyable");`
 
 ## Memory Operations
 
 ### Data Movement
 
-- [ ] Host to Device transfers
-  - [ ] Synchronous: `static NdArray from_host(const std::vector<T>& data, const std::array<size_t, Rank>& dims)`
-  - [ ] Asynchronous: `static NdArray from_host_async(const std::vector<T>& data, const std::array<size_t, Rank>& dims, cudaStream_t stream)`
-- [ ] Device to Host transfers
-  - [ ] Synchronous: `void to_host(std::vector<T>& out) const`
-  - [ ] Asynchronous: `void to_host_async(std::vector<T>& out, cudaStream_t stream) const`
-- [ ] Device to Device transfers
-  - [ ] Copy constructor: `NdArray(const NdArray& other)`
-  - [ ] Copy assignment: `NdArray& operator=(const NdArray& other)`
-  - [ ] Explicit copy: `NdArray copy() const`
+- [x] Host to Device transfers
+  - [x] Asynchronous/Synchronous: `static NdArray from_host_async(const std::vector<T>& data, const std::array<size_t, Rank>& dims, cudaStream_t stream)`
+- [x] Device to Host transfers
+  - [x] Asynchronous: `void to_host_async(std::vector<T>& out, cudaStream_t stream) const`
+- [x] Device to Device transfers
+  - [x] Copy constructor: `NdArray(const NdArray& other)`
+  - [x] Copy assignment: `NdArray& operator=(const NdArray& other)`
 
 ### Memory Types
 
-- [ ] Device memory (default)
-  - [ ] `cudaMalloc` / `cudaFree`
-  - [ ] `cudaMallocAsync` / `cudaFreeAsync` with streams
-- [ ] Pinned (page-locked) memory
-  - [ ] `cudaMallocHost` / `cudaFreeHost`
-  - [ ] Factory method: `static NdArray pinned(const std::array<size_t, Rank>& dims)`
-- [ ] Unified memory (optional)
-  - [ ] `cudaMallocManaged` / `cudaFree`
-  - [ ] Factory method: `static NdArray managed(const std::array<size_t, Rank>& dims)`
+- [x] Device memory (default)
+  - [x] `cudaMalloc` / `cudaFree`
+  - [x] `cudaMallocAsync` / `cudaFreeAsync` with streams
+- [x] Pinned (page-locked) memory
+  - [x] `cudaMallocHost` / `cudaFreeHost`
+  - [x] Factory method: `static NdArray pinned(const std::array<size_t, Rank>& dims)`
+- [x] Unified memory (optional)
+  - [x] `cudaMallocManaged` / `cudaFree`
+  - [x] Factory method: `static NdArray managed(const std::array<size_t, Rank>& dims)`
 
 ### Initialization
 
-- [ ] Fill with value
-  - [ ] `cudaMemsetAsync` for byte-sized types
-  - [ ] Custom kernel for other types
-- [ ] Factory methods
-  - [ ] `static NdArray zeros(const std::array<size_t, Rank>& dims)`
-  - [ ] `static NdArray ones(const std::array<size_t, Rank>& dims)`
-  - [ ] `static NdArray full(const std::array<size_t, Rank>& dims, const T& value)`
-  - [ ] `static NdArray arange(T start, T stop, T step = 1)` (Rank=1 only)
-  - [ ] `static NdArray eye(size_t n)` (Rank=2 only)
-  - [ ] `static NdArray random_uniform(const std::array<size_t, Rank>& dims, T low = 0, T high = 1)`
-  - [ ] `static NdArray random_normal(const std::array<size_t, Rank>& dims, T mean = 0, T std = 1)`
+- [x] Fill with value
+  - [x] `cudaMemsetAsync` for byte-sized types
+  - [x] Custom kernel for other types
+- [x] Factory methods
+  - [x] `static NdArray zeros(const std::array<size_t, Rank>& dims)`
+  - [x] `static NdArray ones(const std::array<size_t, Rank>& dims)`
+  - [x] `static NdArray full(const std::array<size_t, Rank>& dims, const T& value)`
+  - [x] `static NdArray arange(T start, T stop, T step = 1)` (Rank=1 only)
+  - [x] `static NdArray eye(size_t n)` (Rank=2 only)
+  - [x] `static NdArray random_uniform(const std::array<size_t, Rank>& dims, T low = 0, T high = 1)`
+  - [x] `static NdArray random_normal(const std::array<size_t, Rank>& dims, T mean = 0, T std = 1)`
 
 ## Array Operations
 

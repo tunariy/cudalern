@@ -12,7 +12,7 @@
 
 namespace cudalern {
 
-enum class allocatorPolicy : uint8_t { Host, Device, Pinned };
+enum class allocatorPolicy : uint8_t { Pinned, Device, Managed };
 
 template <class T>
     requires(std::is_integral_v<T> || std::is_floating_point_v<T>)
@@ -34,10 +34,10 @@ class allocator {
                                      const Stream& stream = Stream()) noexcept {
         if constexpr (policy == allocatorPolicy::Device)
             return allocateDevice<T>(n, stream.get());
-        else if constexpr (policy == allocatorPolicy::Host)
-            return allocateHost<T>(n, stream.get());
         else if constexpr (policy == allocatorPolicy::Pinned)
             return allocatePinned<T>(n, stream.get());
+        else if constexpr (policy == allocatorPolicy::Managed)
+            return allocateManaged<T>(n, stream.get());
     }
 
     // Instance allocation with policy and stream
@@ -45,10 +45,10 @@ class allocator {
                               const Stream& stream = Stream()) noexcept {
         if (policy == allocatorPolicy::Device)
             return allocateDevice<T>(n, stream.get());
-        else if (policy == allocatorPolicy::Host)
-            return allocateHost<T>(n, stream.get());
         else if (policy == allocatorPolicy::Pinned)
             return allocatePinned<T>(n, stream.get());
+        else if (policy == allocatorPolicy::Managed)
+            return allocateManaged<T>(n, stream.get());
     }
 
     // Static deallocation with policy and stream
@@ -56,10 +56,10 @@ class allocator {
     static void deallocate(T* ptr, const Stream& stream = Stream()) noexcept {
         if constexpr (policy == allocatorPolicy::Device)
             deallocateDevice<T>(ptr, stream.get());
-        else if constexpr (policy == allocatorPolicy::Host)
-            deallocateHost<T>(ptr);
         else if constexpr (policy == allocatorPolicy::Pinned)
             deallocatePinned<T>(ptr);
+        else if constexpr (policy == allocatorPolicy::Managed)
+            deallocateManaged<T>(ptr);
     }
 };
 
@@ -71,26 +71,16 @@ struct DeviceDeleter {
 };
 
 template <typename T>
-struct HostDeleter {
+struct PinnedDeleter {
     void operator()(T* ptr) const noexcept {
-        if (ptr) {
-            auto err = allocator<T>::template deallocate<allocatorPolicy::Host>(ptr);
-            if (err != cudaSuccess)
-                BENCHTOOLS_CRITICAL("HostDeleter: deallocation failed "s +
-                                    CUDALERN_ERROR(err));
-        }
+        if (ptr) allocator<T>::template deallocate<allocatorPolicy::Pinned>(ptr);
     }
 };
 
 template <typename T>
-struct PinnedDeleter {
+struct ManagedDeleter {
     void operator()(T* ptr) const noexcept {
-        if (ptr) {
-            auto err = allocator<T>::template deallocate<allocatorPolicy::Pinned>(ptr);
-            if (err != cudaSuccess)
-                BENCHTOOLS_CRITICAL("PinnedDeleter: deallocation failed "s +
-                                    CUDALERN_ERROR(err));
-        }
+        if (ptr) allocator<T>::template deallocate<allocatorPolicy::Managed>(ptr);
     }
 };
 

@@ -29,7 +29,7 @@ class Stream {
 
     [[nodiscard]] auto get() const noexcept -> cudaStream_t;
 
-    [[nodiscard]] auto synchronize() -> cudaError_t;
+    [[nodiscard]] auto synchronize() const -> cudaError_t;
 
     [[nodiscard]] auto valid() const noexcept -> bool;
 
