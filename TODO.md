@@ -63,6 +63,16 @@
 
 ## Array Operations
 
+### Important
+
+- [ ] A global cuda device prop object for getting the max block size etc.
+- [ ] An interface to launch kernels without the hassle of setting up shit such as params, kernel launch config stream shared mem
+
+### Device Host status shit
+
+- [x] Device propr status
+- [ ] Host propr status related to memory etc.
+
 ### Core Operations
 
 - [ ] Element-wise operations

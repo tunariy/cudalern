@@ -1,5 +1,3 @@
-# ./src/
-
 include(FetchContent)
 
 FetchContent_Declare(
@@ -14,9 +12,9 @@ add_library(cudalern)
 
 target_compile_features(cudalern PRIVATE cxx_std_20)
 
-# Include directories:
+# Note for include directories:
 #   PUBLIC: ${CMAKE_SOURCE_DIR}/include -> so users can #include <ABI/...> and <cudalern/...>
-#   PRIVATE: ${CMAKE_CURRENT_SOURCE_DIR} -> if you need internal headers later
+#   PRIVATE: ${CMAKE_CURRENT_SOURCE_DIR} -> for internal headers
 target_include_directories(cudalern
     PUBLIC
         ${CMAKE_SOURCE_DIR}/include
@@ -31,8 +29,8 @@ target_link_libraries(cudalern PUBLIC
 
 target_sources(cudalern
     PRIVATE
-        cudalern/kernel.cu
-        cudalern/core.cu
+        ABI/kernel.cu
+        Core/device.cpp
         ABI/stream.cpp
         # add other .cu or .cpp files here if any
 )
@@ -44,9 +42,11 @@ set_target_properties(cudalern PROPERTIES
 # Export compile commands (for clangd)
 set_property(TARGET cudalern PROPERTY EXPORT_COMPILE_COMMANDS ON)
 
-add_executable(test tests/main.cpp)
-
-
-target_link_libraries(test PRIVATE 
-    cudalern
-)
+# -----------------------------------------------------------------------------
+# Tests
+# -----------------------------------------------------------------------------
+option(BUILD_TESTING "Build tests" ON)
+if(BUILD_TESTING)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
