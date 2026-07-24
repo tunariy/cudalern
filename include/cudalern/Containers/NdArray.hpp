@@ -6,7 +6,7 @@
 #include <cudalern/Core/concepts.hpp>
 #include <cudalern/Core/err.hpp>
 
-#include <cudalern/Core/kernel.cuh>
+#include <cudalern/ABI/kernel.cuh>
 
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
@@ -153,7 +153,7 @@ class NdArray {
         synchronize();
     };
 
-    [[nodiscard]] NdArray& operator=(const NdArray<T, Rank>& other) {
+    NdArray& operator=(const NdArray<T, Rank>& other) {
         if (this == &other) return *this;
         if (!other.m_Size) return *this;
 
@@ -185,10 +185,13 @@ class NdArray {
         m_Strides = std::move(other.m_Strides);
 
         m_Data = std::move(other.m_Data);
+
         other.m_Data.reset();
+        other.m_Size = 0;
+        other.m_Dimensions.fill(0);
     }
 
-    [[nodiscard]] NdArray& operator=(NdArray<T, Rank>&& other) noexcept {
+    NdArray& operator=(NdArray<T, Rank>&& other) noexcept {
         if (!other.m_Size) return *this;  // discard move if other nd is empty
 
         m_Size = std::move(other.m_Size);
@@ -197,7 +200,10 @@ class NdArray {
         m_Strides = std::move(other.m_Strides);
 
         m_Data = std::move(other.m_Data);
+        
         other.m_Data.reset();
+        other.m_Size = 0;
+        other.m_Dimensions.fill(0);
 
         return *this;
     }
@@ -210,6 +216,19 @@ class NdArray {
             std::array<std::size_t, sizeof...(Args)>{static_cast<std::size_t>(dims)...});
     }
 
+    NdArray operator*(const NdArray& other) const noexcept {}
+
+    NdArray operator*(const T& val) const noexcept {}
+
+    void operator*=(const T& val) const noexcept {}
+
+    template <class KernelFunc, class... Args>
+        requires(std::is_function_v<KernelFunc>)
+    NdArray arrayOp(const NdArray& other, Args... params) const noexcept {
+
+    };
+
+  public:
     template <class... Args>
         requires(sizeof...(Args) == Rank)
     [[nodiscard]] T read(Args... dims) const {
@@ -245,10 +264,12 @@ class NdArray {
     void to_host(std::vector<T>& out, Stream stream) const noexcept { out = data(); }
 
     [[nodiscard]] T* release() noexcept {
-        T* temp{m_Data.get()};
-        m_Data = nullptr;
+        auto temp{m_Data.get()};
+        m_Data = std::shared_ptr<T>{nullptr, [](T* ptr) {}};
         return temp;
     }
+
+    [[nodiscard]] std::shared_ptr<T> getUnderlying() const noexcept { return m_Data; }
 
     void synchronize() const noexcept {
         [[maybe_unused]]
@@ -262,6 +283,7 @@ class NdArray {
 
     [[nodiscard]] size_t nbytes() const noexcept { return m_Size * sizeof(T); }
 
+  public:
     static NdArray zeros(const std::array<size_t, Rank>& dims) noexcept {
         NdArray arr(dims);
         arr.fill(static_cast<T>(0));
@@ -291,7 +313,8 @@ class NdArray {
         dim3 grid(gridSize);
         dim3 block(blockSize);
 
-        void* args[] = {&arr.m_Data.get(), &n, &start, &step};
+        T* d_data = arr.m_Data.get();
+        void* args[] = {&d_data, &n, &start, &step};
 
         cudaLaunchKernel((void*)kernel::arange<T>, grid, block, args, 0,
                          arr.m_Stream.get());
@@ -300,9 +323,8 @@ class NdArray {
     }
 
     // eye – rank 2 identity matrix
-    template <std::size_t R = Rank>
-    static std::enable_if<R == 2, NdArray> eye(size_t n) noexcept {
-        static_assert(R == 2, "eye only valid for Rank=2");
+    static NdArray eye(size_t n) noexcept {
+        static_assert(Rank == 2, "eye only valid for Rank=2");
         std::array<size_t, 2> dims = {n, n};
         NdArray arr(dims);
 
@@ -311,9 +333,9 @@ class NdArray {
         dim3 grid(gridSize);
         dim3 block(blockSize);
 
-        // Need to pass rows and cols separately (both = n)
+        T* d_data = arr.m_Data.get();
         void* args[] = {
-            &arr.m_Data.get(),
+            &d_data,
             &n,  // rows
             &n   // cols
         };
@@ -337,7 +359,8 @@ class NdArray {
         unsigned int seed =
             static_cast<unsigned int>(std::time(nullptr)) + seed_counter++;
 
-        void* args[] = {&arr.m_Data.get(), &arr.m_Size, &low, &high, &seed};
+        T* d_data = arr.m_Data.get();
+        void* args[] = {&d_data, &arr.m_Size, &low, &high, &seed};
 
         cudaLaunchKernel((void*)kernel::random_uniform<T>, grid, block, args, 0,
                          arr.m_Stream.get());
@@ -359,7 +382,8 @@ class NdArray {
         unsigned int seed =
             static_cast<unsigned int>(std::time(nullptr)) + seed_counter++;
 
-        void* args[] = {&arr.m_Data.get(), &arr.m_Size, &mean, &std, &seed};
+        T* d_data = arr.m_Data.get();
+        void* args[] = {&d_data, &arr.m_Size, &mean, &std, &seed};
 
         cudaLaunchKernel((void*)kernel::random_normal<T>, grid, block, args, 0,
                          arr.m_Stream.get());
@@ -458,7 +482,10 @@ class NdArray {
             dim3 grid(gridSize);
             dim3 block(blockSize);
 
-            void* args[] = {&m_Data.get(), &m_Size, &value};
+            T* d_data = m_Data.get();
+            // Cast away const-ness for kernel launch (cudaLaunchKernel expects void*)
+            void* args[] = {&d_data, &m_Size,
+                            const_cast<void*>(static_cast<const void*>(&value))};
 
             cudaLaunchKernel((void*)kernel::fill<T>, grid, block, args, 0,
                              m_Stream.get());

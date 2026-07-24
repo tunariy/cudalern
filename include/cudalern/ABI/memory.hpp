@@ -37,6 +37,7 @@ enum class memcpyKind : uint8_t {
     }
     }
     assert(false && "Invalid memcpyKind!");
+    return "";
 }
 
 template <class T>
@@ -95,8 +96,8 @@ template <class T>
     requires(CudaCompatible<T>)
 [[nodiscard]] auto memcpy(const T* dst, const T* src, const std::size_t n,
                           memcpyKind copyKind, cudaStream_t stream = nullptr) noexcept
-    -> cudaError_t {
-    cudaError_t err;
+    -> error_t {
+    error_t err;
     switch (copyKind) {
     case memcpyKind::HostToDevice: {
         err = cudaMemcpyAsync((void*)dst, (void*)src, n * sizeof(T),
@@ -128,7 +129,7 @@ template <class T>
 template <class T>
     requires(CudaCompatible<T>)
 [[nodiscard]] auto memset(const T* ptr, T val, std::size_t count,
-                          cudaStream_t stream = nullptr) noexcept -> cudaError_t {
+                          cudaStream_t stream = nullptr) noexcept -> error_t {
     return cudaMemsetAsync(ptr, val, count, stream);
 }
 

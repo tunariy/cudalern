@@ -1,4 +1,7 @@
 #pragma once
+
+#include <device_types.h>
+
 #ifndef CUDALERN_KERNEL_CUH
     #define CUDALERN_KERNEL_CUH
 
@@ -26,7 +29,7 @@ namespace kernel {
     /**
      * @brief Empty kernel call to speed up the initial kernel call
      */
-    __device__ inline void emptyCall() {};
+    __device__ inline void emptyCall() noexcept {};
 
     /**
      * @brief Applies a function to each element of an array.
@@ -460,7 +463,7 @@ namespace kernel {
     __global__ void softmax(T* c, const T* a, uint32_t size);
     #endif
 
-    // Device‑side implementations   
+    // Device‑side implementations
     #ifdef __CUDACC__
 
     static __device__ unsigned int xorshift32(unsigned int& state) {
@@ -473,7 +476,7 @@ namespace kernel {
     }
 
     static __device__ float uniform_rand(unsigned int& state) {
-        return static_cast<float>(xorshift32(state)) / float(INT_MAX);
+        return static_cast<float>(xorshift32(state)) / 4294967295.0f;
     }
 
     static __device__ float normal_rand(unsigned int& state) {
