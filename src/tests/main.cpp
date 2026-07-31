@@ -1,4 +1,4 @@
-#include "cudalern/Core/device.hpp"
+#include "cudalern/Core/Device/device.hpp"
 #include <cudalern/Containers/NdArray.hpp>
 
 #include <array>
@@ -6,7 +6,7 @@
 #include <vector>
 
 auto main() -> int {
-    cudalern::InitializeContext(0);
+    cudalern::internal::InitializeContext(0);
     std::vector<std::vector<std::vector<int>>> data3d(
         3, std::vector<std::vector<int>>(3, std::vector<int>(3, 42)));
 

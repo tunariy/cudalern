@@ -1,19 +1,18 @@
-#include <gtest/gtest.h>
 #include <cudalern/Containers/NdArray.hpp>
-#include <cudalern/Core/device.hpp>
+#include <cudalern/Core/Device/device.hpp>
+
+#include <gtest/gtest.h>
 
 #include <array>
-#include <vector>
 #include <cmath>
+#include <vector>
 
 // -----------------------------------------------------------------------------
 // Test fixture – initializes CUDA context once for all tests
 // -----------------------------------------------------------------------------
 class NdArrayTest : public ::testing::Test {
-protected:
-    static void SetUpTestSuite() {
-        cudalern::InitializeContext(0);
-    }
+  protected:
+    static void SetUpTestSuite() { cudalern::internal::InitializeContext(0); }
 };
 
 // -----------------------------------------------------------------------------
@@ -101,10 +100,8 @@ TEST_F(NdArrayTest, From2DVector) {
 }
 
 TEST_F(NdArrayTest, From3DVector) {
-    std::vector<std::vector<std::vector<int>>> data = {
-        {{1, 2}, {3, 4}},
-        {{5, 6}, {7, 8}}
-    };
+    std::vector<std::vector<std::vector<int>>> data = {{{1, 2}, {3, 4}},
+                                                       {{5, 6}, {7, 8}}};
     auto arr = cudalern::NdArray<int, 3>(data);
     EXPECT_EQ(arr(0, 0, 0), 1);
     EXPECT_EQ(arr(0, 1, 1), 4);
@@ -165,7 +162,7 @@ TEST_F(NdArrayTest, ReadAndOperator) {
 }
 
 TEST_F(NdArrayTest, DataCopy) {
-    std::array<std::size_t, 1> dims = {5};
+    [[maybe_unused]] std::array<std::size_t, 1> dims = {5};
     auto arr = cudalern::NdArray<int, 1>::arange(10, 15, 1);
     auto vec = arr.data();
     std::vector<int> expected = {10, 11, 12, 13, 14};
@@ -173,7 +170,7 @@ TEST_F(NdArrayTest, DataCopy) {
 }
 
 TEST_F(NdArrayTest, ToHost) {
-    std::array<std::size_t, 1> dims = {5};
+    [[maybe_unused]] std::array<std::size_t, 1> dims = {5};
     auto arr = cudalern::NdArray<int, 1>::arange(20, 25, 1);
     std::vector<int> host;
     host.reserve(arr.size());
@@ -224,13 +221,7 @@ TEST_F(NdArrayTest, Release) {
     auto arr = cudalern::NdArray<int, 1>::full(dims, 100);
     auto ptr = arr.release();
     EXPECT_NE(ptr, nullptr);
-    EXPECT_TRUE(arr.empty());  // after release, array is empty
-    // Memory stays alive – we can still access it via ptr
-    // In a real test we might copy the value, but we don't have a device->host copy here.
-    // We'll just check it's not null.
-    // Cleanup: we need to free it ourselves, but we don't know the original allocator.
-    // For testing, we can just let it leak (or use cudaFree if we know it's device).
-    // We'll skip freeing to keep it simple.
+    EXPECT_TRUE(arr.empty());
 }
 
 TEST_F(NdArrayTest, GetUnderlying) {
