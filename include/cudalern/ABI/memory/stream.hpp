@@ -37,7 +37,7 @@ class Stream {
 
     auto take(cudaStream_t stream) noexcept -> void;
 
-    [[nodiscard]] auto release() noexcept -> cudaStream_t;
+    [[nodiscard]] auto release() noexcept -> cudaStream_t = delete;
 
   private:
     std::shared_ptr<cudaStream_t> m_Stream{};

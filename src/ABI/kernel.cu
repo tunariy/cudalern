@@ -1,3 +1,3 @@
-#include "cudalern/ABI/kernel.cuh"
+#include "cudalern/ABI/kernel/kernel.cuh"
 
 namespace cudalern {}

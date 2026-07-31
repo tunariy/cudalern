@@ -1,7 +1,10 @@
-#include "cudalern/ABI/stream.hpp"
+#include "cudalern/ABI/memory/stream.hpp"
 
+#include "benchtools/Loggers/Logger.hpp"
 #include "cuda_runtime_api.h"
+#include "cudalern/Core/err.hpp"
 
+#include <memory>
 #include <utility>
 
 namespace cudalern {
@@ -9,9 +12,10 @@ namespace cudalern {
 struct StreamDeleter {
     void operator()(cudaStream_t* ptr) const noexcept {
         if (ptr && *ptr) {
-            cudaStreamDestroy(*ptr);
+            auto err = cudaStreamDestroy(*ptr);
+            if (err) BENCHTOOLS_TRACE("Failed to destroy stream" + CUDALERN_ERROR(err));
+            return;
         }
-        delete ptr;
     }
 };
 
@@ -68,13 +72,6 @@ auto Stream::reset() -> error_t {
 
 auto Stream::take(cudaStream_t stream) noexcept -> void {
     m_Stream = std::shared_ptr<cudaStream_t>(new cudaStream_t(stream), StreamDeleter());
-}
-
-auto Stream::release() noexcept -> cudaStream_t {
-    if (!m_Stream) return nullptr;
-    cudaStream_t raw = *m_Stream;
-    m_Stream.reset();
-    return raw;
 }
 
 }  // namespace cudalern

@@ -1,8 +1,8 @@
 #pragma once
 
 #include <cuda_runtime_api.h>
-#include <cudalern/ABI/memory.hpp>
-#include <cudalern/ABI/stream.hpp>
+#include <cudalern/ABI/memory/memory.hpp>
+#include <cudalern/ABI/memory/stream.hpp>
 
 #include <driver_types.h>
 
@@ -49,6 +49,7 @@ class allocator {
             return allocatePinned<T>(n, stream.get());
         else if (policy == allocatorPolicy::Managed)
             return allocateManaged<T>(n, stream.get());
+        return nullptr;
     }
 
     // Static deallocation with policy and stream

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cudalern/Core/concepts.hpp"
+#include <cudalern/Core/core.hpp>
 #include <cudalern/Core/err.hpp>
 
 #include <cuda_runtime.h>
@@ -96,8 +97,8 @@ template <class T>
     requires(CudaCompatible<T>)
 [[nodiscard]] auto memcpy(const T* dst, const T* src, const std::size_t n,
                           memcpyKind copyKind, cudaStream_t stream = nullptr) noexcept
-    -> error_t {
-    error_t err;
+    -> cudalernErr {
+    cudalernErr err;
     switch (copyKind) {
     case memcpyKind::HostToDevice: {
         err = cudaMemcpyAsync((void*)dst, (void*)src, n * sizeof(T),
@@ -129,8 +130,8 @@ template <class T>
 template <class T>
     requires(CudaCompatible<T>)
 [[nodiscard]] auto memset(const T* ptr, T val, std::size_t count,
-                          cudaStream_t stream = nullptr) noexcept -> error_t {
-    return cudaMemsetAsync(ptr, val, count, stream);
+                          cudaStream_t stream = nullptr) noexcept -> cudalernErr {
+    return cudaMemsetAsync((void*)ptr, val, count * sizeof(T), stream);
 }
 
 }  // namespace cudalern

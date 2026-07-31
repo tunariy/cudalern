@@ -29,7 +29,7 @@ namespace kernel {
     /**
      * @brief Empty kernel call to speed up the initial kernel call
      */
-    __device__ inline void emptyCall() noexcept {};
+    __global__ inline void emptyCall() {};
 
     /**
      * @brief Applies a function to each element of an array.
@@ -700,7 +700,7 @@ namespace kernel {
     template <typename T>
     __device__ T warpReduceSum(T val) {
         for (int offset = warpSize / 2; offset > 0; offset >>= 1)
-            val += __shfl_down_sync(0xffffffff, val, offset);
+            val += __shfl_down_sync(UINT32_MAX, val, offset);
         return val;
     }
 

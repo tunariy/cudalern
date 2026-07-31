@@ -1,12 +1,15 @@
 #pragma once
 
-#include <cudalern/ABI/allocator.hpp>
-#include <cudalern/ABI/stream.hpp>
+#include <cstring>
+#include <cudalern/ABI/kernel/kernel.cuh>
+#include <cudalern/ABI/kernel/kernel_wrappers.hpp>
+#include <cudalern/ABI/memory/allocator.hpp>
+#include <cudalern/ABI/memory/stream.hpp>
+
+#include <cudalern/Core/Device/device.hpp>
 
 #include <cudalern/Core/concepts.hpp>
 #include <cudalern/Core/err.hpp>
-
-#include <cudalern/ABI/kernel.cuh>
 
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
@@ -132,78 +135,78 @@ class NdArray {
         synchronize();
     }
 
-    NdArray(const NdArray<T, Rank>& other) {
-        if (this == &other) return;
-        if (!other.m_Size) return;
+    NdArray(const NdArray<T, Rank>& rhs) {
+        if (this == &rhs) return;
+        if (!rhs.m_Size) return;
 
         if (this->m_Size)  // if we have anything allocated
             cleanup();
 
-        m_Size = other.m_Size;
-        m_Stream = other.m_Stream;
-        m_Dimensions = other.m_Dimensions;
-        m_Strides = other.m_Strides;
+        m_Size = rhs.m_Size;
+        m_Stream = rhs.m_Stream;
+        m_Dimensions = rhs.m_Dimensions;
+        m_Strides = rhs.m_Strides;
 
         m_Data = std::shared_ptr<T>(
             allocator<T>::template allocate<allocatorPolicy::Device>(m_Size, m_Stream),
             DeviceDeleter<T>());
 
-        [[maybe_unused]] auto err = memcpy(m_Data.get(), other.m_Data.get(), m_Size,
+        [[maybe_unused]] auto err = memcpy(m_Data.get(), rhs.m_Data.get(), m_Size,
                                            memcpyKind::DeviceToDevice, m_Stream);
         synchronize();
     };
 
-    NdArray& operator=(const NdArray<T, Rank>& other) {
-        if (this == &other) return *this;
-        if (!other.m_Size) return *this;
+    NdArray& operator=(const NdArray<T, Rank>& rhs) {
+        if (this == &rhs) return *this;
+        if (!rhs.m_Size) return *this;
 
         if (this->m_Size)  // if we have anything allocated
             cleanup();
 
-        m_Size = other.m_Size;
-        m_Stream = other.m_Stream;
-        m_Dimensions = other.m_Dimensions;
-        m_Strides = other.m_Strides;
+        m_Size = rhs.m_Size;
+        m_Stream = rhs.m_Stream;
+        m_Dimensions = rhs.m_Dimensions;
+        m_Strides = rhs.m_Strides;
 
         m_Data = std::shared_ptr<T>(
             allocator<T>::template allocate<allocatorPolicy::Device>(m_Size, m_Stream),
             DeviceDeleter<T>());
 
-        [[maybe_unused]] auto err = memcpy(m_Data.get(), other.m_Data.get(), m_Size,
+        [[maybe_unused]] auto err = memcpy(m_Data.get(), rhs.m_Data.get(), m_Size,
                                            memcpyKind::DeviceToDevice, m_Stream);
         synchronize();
 
         return *this;
     }
 
-    NdArray(NdArray<T, Rank>&& other) noexcept {
-        if (!other.m_Size) return;  // discard move if other nd is empty
+    NdArray(NdArray<T, Rank>&& rhs) noexcept {
+        if (!rhs.m_Size) return;  // discard move if rhs nd is empty
 
-        m_Size = std::move(other.m_Size);
-        m_Stream = std::move(other.m_Stream);
-        m_Dimensions = std::move(other.m_Dimensions);
-        m_Strides = std::move(other.m_Strides);
+        m_Size = std::move(rhs.m_Size);
+        m_Stream = std::move(rhs.m_Stream);
+        m_Dimensions = std::move(rhs.m_Dimensions);
+        m_Strides = std::move(rhs.m_Strides);
 
-        m_Data = std::move(other.m_Data);
+        m_Data = std::move(rhs.m_Data);
 
-        other.m_Data.reset();
-        other.m_Size = 0;
-        other.m_Dimensions.fill(0);
+        rhs.m_Data.reset();
+        rhs.m_Size = 0;
+        rhs.m_Dimensions.fill(0);
     }
 
-    NdArray& operator=(NdArray<T, Rank>&& other) noexcept {
-        if (!other.m_Size) return *this;  // discard move if other nd is empty
+    NdArray& operator=(NdArray<T, Rank>&& rhs) noexcept {
+        if (!rhs.m_Size) return *this;  // discard move if rhs nd is empty
 
-        m_Size = std::move(other.m_Size);
-        m_Stream = std::move(other.m_Stream);
-        m_Dimensions = std::move(other.m_Dimensions);
-        m_Strides = std::move(other.m_Strides);
+        m_Size = std::move(rhs.m_Size);
+        m_Stream = std::move(rhs.m_Stream);
+        m_Dimensions = std::move(rhs.m_Dimensions);
+        m_Strides = std::move(rhs.m_Strides);
 
-        m_Data = std::move(other.m_Data);
-        
-        other.m_Data.reset();
-        other.m_Size = 0;
-        other.m_Dimensions.fill(0);
+        m_Data = std::move(rhs.m_Data);
+
+        rhs.m_Data.reset();
+        rhs.m_Size = 0;
+        rhs.m_Dimensions.fill(0);
 
         return *this;
     }
@@ -216,15 +219,25 @@ class NdArray {
             std::array<std::size_t, sizeof...(Args)>{static_cast<std::size_t>(dims)...});
     }
 
-    NdArray operator*(const NdArray& other) const noexcept {}
+    // TODO: needs to return a proxy object that will allow it to interact with device
+    template <class... Args>
+        requires(sizeof...(Args) == Rank)
+    T& operator()(Args... dims) {
+        return read(
+            std::array<std::size_t, sizeof...(Args)>{static_cast<std::size_t>(dims)...});
+    }
 
     NdArray operator*(const T& val) const noexcept {}
 
+    NdArray operator*(const NdArray& rhs) const noexcept {}
+
     void operator*=(const T& val) const noexcept {}
+
+    void operator*=(const NdArray& rhs) const noexcept {}
 
     template <class KernelFunc, class... Args>
         requires(std::is_function_v<KernelFunc>)
-    NdArray arrayOp(const NdArray& other, Args... params) const noexcept {
+    NdArray arrayOp(const NdArray& rhs, Args... params) const noexcept {
 
     };
 
@@ -266,6 +279,7 @@ class NdArray {
     [[nodiscard]] T* release() noexcept {
         auto temp{m_Data.get()};
         m_Data = std::shared_ptr<T>{nullptr, [](T* ptr) {}};
+        m_Size = {};
         return temp;
     }
 
@@ -308,16 +322,13 @@ class NdArray {
         std::array<size_t, 1> dims = {n};
         NdArray arr(dims);
 
-        const int blockSize = 256;
-        const int gridSize = (static_cast<int>(n) + blockSize - 1) / blockSize;
-        dim3 grid(gridSize);
-        dim3 block(blockSize);
+        [[maybe_unused]] auto err =
+            launchKernel1D(kernel::arange<T>, 0, arr.m_Stream, arr.m_Size,
+                           arr.m_Data.get(), arr.m_Size, start, step);
+        if (err)
+            BENCHTOOLS_ERR(
+                CUDALERN_ERROR_MESSAGE("Failed to generate arange NdArray", err));
 
-        T* d_data = arr.m_Data.get();
-        void* args[] = {&d_data, &n, &start, &step};
-
-        cudaLaunchKernel((void*)kernel::arange<T>, grid, block, args, 0,
-                         arr.m_Stream.get());
         arr.synchronize();
         return arr;
     }
@@ -328,19 +339,12 @@ class NdArray {
         std::array<size_t, 2> dims = {n, n};
         NdArray arr(dims);
 
-        const int blockSize = 256;
-        const int gridSize = (static_cast<int>(arr.m_Size) + blockSize - 1) / blockSize;
-        dim3 grid(gridSize);
-        dim3 block(blockSize);
+        [[maybe_unused]] auto err = launchKernel1D(kernel::eye<T>, 0, arr.m_Stream,
+                                                   arr.size(), arr.m_Data.get(), n, n);
+        if (err)
+            BENCHTOOLS_ERR(CUDALERN_ERROR_MESSAGE(
+                "Failed to construct the NdArray during the kernel stage", err));
 
-        T* d_data = arr.m_Data.get();
-        void* args[] = {
-            &d_data,
-            &n,  // rows
-            &n   // cols
-        };
-
-        cudaLaunchKernel((void*)kernel::eye<T>, grid, block, args, 0, arr.m_Stream.get());
         arr.synchronize();
         return arr;
     }
@@ -349,21 +353,16 @@ class NdArray {
                                   T high = 1) noexcept {
         NdArray arr(dims);
 
-        const int blockSize = 256;
-        const int gridSize = (static_cast<int>(arr.m_Size) + blockSize - 1) / blockSize;
-        dim3 grid(gridSize);
-        dim3 block(blockSize);
-
-        // Seed: use a mix of time and a counter
         static unsigned int seed_counter = 0;
         unsigned int seed =
             static_cast<unsigned int>(std::time(nullptr)) + seed_counter++;
 
-        T* d_data = arr.m_Data.get();
-        void* args[] = {&d_data, &arr.m_Size, &low, &high, &seed};
-
-        cudaLaunchKernel((void*)kernel::random_uniform<T>, grid, block, args, 0,
-                         arr.m_Stream.get());
+        [[maybe_unused]] auto err =
+            launchKernel1D(kernel::random_uniform<T>, 0, arr.m_Stream, arr.m_Size,
+                           arr.m_Data.get(), arr.m_Size, low, high, seed);
+        if (err)
+            BENCHTOOLS_ERR(
+                CUDALERN_ERROR_MESSAGE("Failed to generate random_uniform NdArray", err));
 
         arr.synchronize();
         return arr;
@@ -373,20 +372,16 @@ class NdArray {
                                  T std = 1) noexcept {
         NdArray arr(dims);
 
-        const int blockSize = 256;
-        const int gridSize = (static_cast<int>(arr.m_Size) + blockSize - 1) / blockSize;
-        dim3 grid(gridSize);
-        dim3 block(blockSize);
-
         static unsigned int seed_counter = 0;
         unsigned int seed =
             static_cast<unsigned int>(std::time(nullptr)) + seed_counter++;
 
-        T* d_data = arr.m_Data.get();
-        void* args[] = {&d_data, &arr.m_Size, &mean, &std, &seed};
-
-        cudaLaunchKernel((void*)kernel::random_normal<T>, grid, block, args, 0,
-                         arr.m_Stream.get());
+        [[maybe_unused]] auto err =
+            launchKernel1D(kernel::random_normal<T>, 0, arr.m_Stream, arr.m_Size,
+                           arr.m_Data.get(), arr.m_Size, mean, std, seed);
+        if (err)
+            BENCHTOOLS_ERR(
+                CUDALERN_ERROR_MESSAGE("Failed to generate random_normal NdArray", err));
 
         arr.synchronize();
         return arr;
@@ -470,25 +465,15 @@ class NdArray {
     void fill(const T& value) noexcept {
         if (m_Size == 0 || !m_Data) return;
 
-        // For byte-sized types, cudaMemset is faster
         if constexpr (std::is_integral_v<T> && sizeof(T) == 1) {
-            unsigned char byte_val = static_cast<unsigned char>(value);
-            cudaMemsetAsync(m_Data.get(), static_cast<int>(byte_val), m_Size * sizeof(T),
-                            m_Stream.get());
+            memset(m_Data.get(), static_cast<int>(value), m_Size * sizeof(T),
+                   m_Stream.get());
         } else {
-            const int blockSize = 256;
-            const int gridSize = (m_Size + blockSize - 1) / blockSize;
-
-            dim3 grid(gridSize);
-            dim3 block(blockSize);
-
-            T* d_data = m_Data.get();
-            // Cast away const-ness for kernel launch (cudaLaunchKernel expects void*)
-            void* args[] = {&d_data, &m_Size,
-                            const_cast<void*>(static_cast<const void*>(&value))};
-
-            cudaLaunchKernel((void*)kernel::fill<T>, grid, block, args, 0,
-                             m_Stream.get());
+            [[maybe_unused]] auto err = launchKernel1D(
+                kernel::fill<T>, 0, m_Stream, m_Size, m_Data.get(), m_Size, value);
+            if (err)
+                BENCHTOOLS_ERR(CUDALERN_ERROR_MESSAGE(
+                    "Failed to fill NdArray during kernel launch", err));
         }
     }
 
