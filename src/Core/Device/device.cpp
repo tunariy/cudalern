@@ -4,8 +4,6 @@
 #include "cudalern/Core/core.hpp"
 
 #include <cuda_runtime_api.h>
-
-#include "benchtools/Loggers/Logger.hpp"
 #include "cudalern/Core/err.hpp"
 
 #include <cstddef>
@@ -22,27 +20,29 @@ namespace internal {
     [[nodiscard]] __host__ cudalernErr setDevice(int deviceID) noexcept {
         auto err = cudaSetDevice(deviceID);
         if (err)
-            BENCHTOOLS_ERR("Failed to set device! " + CUDALERN_ERROR(err));
+            CUDALERN_ERR(CUDALERN_ERROR_MESSAGE("Failed to set device! ", err));
         else
-            BENCHTOOLS_INFO("Device is now set to: " + std::to_string(deviceID));
+            CUDALERN_ERR(CUDALERN_ERROR_MESSAGE("Device is now set to: ", err));
         return err;
     }
 
     __host__ void InitializeContext(int device) {
         [[maybe_unused]] auto err = setDevice(device);
-        if (err) BENCHTOOLS_ERR("Failed to set device! " + CUDALERN_ERROR(err));
+        if (err) CUDALERN_ERR(CUDALERN_ERROR_MESSAGE("Failed to set device! ", err));
 
-        BENCHTOOLS_INFO("Initializing context for device: " + std::to_string(device));
+        CUDALERN_INFO("Initializing context for device: " + std::to_string(device));
 
         // Warmup the kernel
         Stream stream{};
         err = cudaLaunchKernel((void*)kernel::emptyCall, 1, 1, nullptr, 0, stream);
-        if (err) BENCHTOOLS_ERR("Failed to warmup the kernel! " + CUDALERN_ERROR(err));
-        cudaDeviceSynchronize();
-        if (err) BENCHTOOLS_ERR("Failed to synch the device! " + CUDALERN_ERROR(err));
+        if (err)
+            CUDALERN_ERR(CUDALERN_ERROR_MESSAGE("Failed to warmup the kernel! ", err));
 
-        BENCHTOOLS_INFO(
-            format(DeviceInfo::Properties(cudalern::internal::DEFAULT_DEVICE)));
+        cudaDeviceSynchronize();
+        if (err)
+            CUDALERN_ERR(CUDALERN_ERROR_MESSAGE("Failed to synch the device! ", err));
+
+        CUDALERN_INFO(format(DeviceInfo::Properties(cudalern::internal::DEFAULT_DEVICE)));
     }
 }  // namespace internal
 
@@ -50,7 +50,7 @@ DeviceProperties::DeviceProperties(int device) noexcept {
 
     m_deviceID = device;
     auto err = cudaGetDeviceProperties(&m_DeviceProps, device);
-    if (err) BENCHTOOLS_CRITICAL("Failed to get device props!" + CUDALERN_ERROR(err));
+    if (err) CUDALERN_ERR(CUDALERN_ERROR_MESSAGE("Failed to get device props!", err));
 
     m_name = m_DeviceProps.name;
     m_totalGlobalMem = m_DeviceProps.totalGlobalMem;
@@ -74,9 +74,8 @@ DeviceProperties::DeviceProperties(int device) noexcept {
 DeviceMemoryState::DeviceMemoryState(int device) noexcept {
     auto err = cudaMemGetInfo(&m_FreeAmount, &m_TotalAmount);
     if (err)
-        BENCHTOOLS_ERR(
-            "Failed to retrieve memory info from the current context device\n" +
-            CUDALERN_ERROR(err));
+        CUDALERN_ERR(CUDALERN_ERROR_MESSAGE(
+            "Failed to retrieve memory info from the current context device", err));
 
     m_UsedAmount = m_TotalAmount - m_FreeAmount;
 }

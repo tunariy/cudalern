@@ -1,6 +1,7 @@
 // Stream.hpp
 #pragma once
 
+#include "cudalern/Core/core.hpp"
 #include "driver_types.h"
 
 #include <memory>
@@ -29,11 +30,11 @@ class Stream {
 
     [[nodiscard]] auto get() const noexcept -> cudaStream_t;
 
-    [[nodiscard]] auto synchronize() const -> error_t;
+    [[nodiscard]] auto synchronize() const -> cudalernErr;
 
     [[nodiscard]] auto valid() const noexcept -> bool;
 
-    [[nodiscard]] auto reset() -> error_t;
+    [[nodiscard]] auto reset() -> cudalernErr;
 
     auto take(cudaStream_t stream) noexcept -> void;
 

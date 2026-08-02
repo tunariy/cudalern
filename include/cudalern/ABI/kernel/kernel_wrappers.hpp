@@ -42,7 +42,7 @@ template <typename Kernel, class... Args>
     auto numBlocks = (N + maxThreadsPerBlock - 1) / maxThreadsPerBlock;
 
     return launchKernel(function, dim3(numBlocks), dim3(threadsPerBlock), sharedMem,
-                        stream, std::forward(args)...);
+                        stream, std::forward<Args>(args)...);
 }
 
 template <typename Kernel, class... Args>

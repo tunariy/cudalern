@@ -36,28 +36,41 @@ class DeviceProperties {
     }
 
     [[nodiscard]] int getID() const noexcept { return m_deviceID; }
+
     [[nodiscard]] std::string getName() const noexcept { return m_name; }
+
     [[nodiscard]] size_t getTotalGlobalMem() const noexcept { return m_totalGlobalMem; }
+
     [[nodiscard]] size_t getSharedMemPerBlock() const noexcept {
         return m_sharedMemPerBlock;
     }
+
     [[nodiscard]] int getRegsPerBlock() const noexcept { return m_regsPerBlock; }
+
     [[nodiscard]] int getMaxThreadsPerBlock() const noexcept {
         return m_maxThreadsPerBlock;
     }
+
     [[nodiscard]] const std::array<int, 3>& getMaxThreadsDim() const noexcept {
         return m_maxThreadsDim;
     }
+
     [[nodiscard]] const std::array<int, 3>& getMaxGridSize() const noexcept {
         return m_maxGridSize;
     }
+
     [[nodiscard]] int getMajorComp() const noexcept { return m_majorComp; }
+
     [[nodiscard]] int getMinorComp() const noexcept { return m_minorComp; }
+
     [[nodiscard]] int getMultiProcessorCount() const noexcept {
         return m_multiProcessorCount;
     }
+
     [[nodiscard]] int getMemoryBusWidth() const noexcept { return m_memoryBusWidth; }
+
     [[nodiscard]] int getL2CacheSize() const noexcept { return m_l2CacheSize; }
+
     [[nodiscard]] int getMaxThreadsPerMultiProcessor() const noexcept {
         return m_maxThreadsPerMultiProcessor;
     }
@@ -71,21 +84,21 @@ class DeviceProperties {
     DeviceProperties(int device = cudalern::internal::DEFAULT_DEVICE) noexcept;
 
   private:
-    int m_deviceID;
     std::string m_name;
-    size_t m_totalGlobalMem{0};
-    size_t m_sharedMemPerBlock{0};
-    int m_regsPerBlock{0};
-    int m_maxThreadsPerBlock{0};
     std::array<int, 3> m_maxThreadsDim{};
     std::array<int, 3> m_maxGridSize{};
+    size_t m_totalGlobalMem{0};
+    size_t m_sharedMemPerBlock{0};
+    cudaDeviceProp m_DeviceProps;
+    int m_deviceID;
+    int m_regsPerBlock{0};
+    int m_maxThreadsPerBlock{0};
     int m_majorComp{0};
     int m_minorComp{0};
     int m_multiProcessorCount{0};
     int m_memoryBusWidth{0};
     int m_l2CacheSize{0};
     int m_maxThreadsPerMultiProcessor{0};
-    cudaDeviceProp m_DeviceProps;
 };
 
 /**

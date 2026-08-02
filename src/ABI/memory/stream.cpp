@@ -1,8 +1,8 @@
 #include "cudalern/ABI/memory/stream.hpp"
-
-#include "benchtools/Loggers/Logger.hpp"
-#include "cuda_runtime_api.h"
+#include "cudalern/Core/core.hpp"
 #include "cudalern/Core/err.hpp"
+
+#include "cuda_runtime_api.h"
 
 #include <memory>
 #include <utility>
@@ -13,7 +13,9 @@ struct StreamDeleter {
     void operator()(cudaStream_t* ptr) const noexcept {
         if (ptr && *ptr) {
             auto err = cudaStreamDestroy(*ptr);
-            if (err) BENCHTOOLS_TRACE("Failed to destroy stream" + CUDALERN_ERROR(err));
+            if (err)
+                CUDALERN_CRITICAL(
+                    CUDALERN_ERROR_MESSAGE("Failed to destroy stream", err));
             return;
         }
     }
@@ -52,7 +54,7 @@ auto Stream::get() const noexcept -> cudaStream_t {
     return m_Stream ? *m_Stream : nullptr;
 }
 
-auto Stream::synchronize() const -> error_t {
+auto Stream::synchronize() const -> cudalernErr {
     if (!m_Stream || !*m_Stream) return cudaErrorInvalidValue;
     return cudaStreamSynchronize(*m_Stream);
 }
@@ -61,7 +63,7 @@ auto Stream::valid() const noexcept -> bool {
     return m_Stream && *m_Stream != nullptr;
 }
 
-auto Stream::reset() -> error_t {
+auto Stream::reset() -> cudalernErr {
     cudaStream_t raw = nullptr;
     auto err = cudaStreamCreate(&raw);
     if (err == cudaSuccess) {

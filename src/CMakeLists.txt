@@ -29,10 +29,9 @@ target_link_libraries(cudalern PUBLIC
 
 target_sources(cudalern
     PRIVATE
-        ABI/kernel.cu
-        Core/device.cpp
-        ABI/stream.cpp
-        # add other .cu or .cpp files here if any
+        ABI/kernel/kernel.cu
+        ABI/memory/stream.cpp
+        Core/Device/device.cpp
 )
 
 set_target_properties(cudalern PROPERTIES
@@ -42,9 +41,7 @@ set_target_properties(cudalern PROPERTIES
 # Export compile commands (for clangd)
 set_property(TARGET cudalern PROPERTY EXPORT_COMPILE_COMMANDS ON)
 
-# -----------------------------------------------------------------------------
-# Tests
-# -----------------------------------------------------------------------------
+# Tests subdir
 option(BUILD_TESTING "Build tests" ON)
 if(BUILD_TESTING)
     enable_testing()

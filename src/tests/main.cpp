@@ -1,37 +1,29 @@
 #include "cudalern/Core/Device/device.hpp"
 #include <cudalern/Containers/NdArray.hpp>
 
-#include <array>
 #include <iostream>
 #include <vector>
 
 auto main() -> int {
     cudalern::internal::InitializeContext(0);
     std::vector<std::vector<std::vector<int>>> data3d(
-        3, std::vector<std::vector<int>>(3, std::vector<int>(3, 42)));
+        3, std::vector<std::vector<int>>(3, std::vector<int>(3, 0)));
 
-    const std::array<std::size_t, 3> dims = {3, 3, 3};
-
-#if 1
-    auto nd = cudalern::NdArray<int, 3>(data3d);
-    std::clog << nd.read(1, 2, 3) << std::endl;
-    auto a = nd.data();
-    for (auto x : a) {
-        std::clog << x << " ";
+    int value{};
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            for (int k = 0; k < 3; ++k) {
+                data3d[i][j][k] = value++;
+            }
+        }
     }
-    std::clog << std::endl;
-
-    auto nd2 = nd;
-    std::clog << nd2.read(1, 1, 1) << std::endl;
 
     auto nd3 = std::move(cudalern::NdArray<int, 3>(data3d));
-    std::clog << nd3(1, 1, 1) << std::endl;
 
-    auto t = nd.release();
-    std::clog << t;
-
-    auto ndddddd = cudalern::NdArray<int, 3>::pinned(dims);
-#endif
+    auto a = nd3[1];
+    std::clog << nd3[1][1][1].get() << std::endl;
+    nd3[1][1][1] = 31;
+    std::clog << nd3[1][1][1].get() << std::endl;
     /*
      * SPACING
      * SPACING
