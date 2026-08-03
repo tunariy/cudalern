@@ -1,0 +1,91 @@
+name: CMake on multiple platforms
+
+on:
+  push:
+    branches: [ "dev", "main" ]
+
+jobs:
+  build:
+    name: ${{ matrix.os }} | ${{ matrix.build_type }} | ${{ matrix.c_compiler }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Ubuntu with Clang
+          - os: ubuntu-latest
+            build_type: Debug
+            c_compiler: clang
+            cpp_compiler: clang++
+          - os: ubuntu-latest
+            build_type: Release
+            c_compiler: clang
+            cpp_compiler: clang++
+          # Windows with MSVC
+          - os: windows-latest
+            build_type: Debug
+            c_compiler: cl
+            cpp_compiler: cl
+          - os: windows-latest
+            build_type: Release
+            c_compiler: cl
+            cpp_compiler: cl
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup MSVC environment (Windows)
+      if: runner.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Install Linux dependencies
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libwayland-dev wayland-protocols \
+          libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+          libgl1-mesa-dev libxkbcommon-dev
+
+    - name: Set reusable strings
+      id: strings
+      shell: bash
+      run: |
+        echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+
+    # Install Ninja 
+    - name: Install Ninja (Linux)
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install -y ninja-build
+    - name: Install Ninja (Windows)
+      if: runner.os == 'Windows'
+      run: choco install ninja
+
+    # Cache build directory to speed up rebuilds
+    - name: Cache build directory
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.strings.outputs.build-output-dir }}
+        key: ${{ runner.os }}-${{ matrix.build_type }}-${{ matrix.c_compiler }}-${{ hashFiles('**/*.cpp', '**/*.h', '**/*.c', '**/CMakeLists.txt', '**/*.cmake') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ matrix.build_type }}-${{ matrix.c_compiler }}-
+          ${{ runner.os }}-${{ matrix.build_type }}-
+          ${{ runner.os }}-
+
+    - name: Configure CMake
+      run: >
+        cmake -B ${{ steps.strings.outputs.build-output-dir }}
+        -G Ninja
+        -DTESTING=ON
+        -DAPP=OFF
+        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
+        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -S ${{ github.workspace }}
+
+    - name: Build
+      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+
+    - name: Test
+      run: ctest --test-dir ${{ steps.strings.outputs.build-output-dir }} --output-on-failure

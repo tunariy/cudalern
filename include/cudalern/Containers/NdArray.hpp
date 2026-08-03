@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <cudalern/ABI/kernel/kernel.cuh>
 #include <cudalern/ABI/kernel/kernel_wrappers.hpp>
 #include <cudalern/ABI/memory/allocator.hpp>
@@ -317,9 +318,11 @@ class NdArray {
     }
 
   public:
-    NdArray operator*(const T& val) const noexcept {}
+    template <std::size_t diffRank>
+        requires(Rank == diffRank)
+    NdArray operator*(const NdArray<T, diffRank>& rhs) const noexcept {}
 
-    NdArray operator*(const NdArray& rhs) const noexcept {}
+    NdArray operator*(const T& val) const noexcept {}
 
     void operator*=(const T& val) const noexcept {}
 
@@ -377,7 +380,7 @@ class NdArray {
         return std::vector<T>{temp.get(), temp.get() + m_Size};
     }
 
-    void to_host(std::vector<T>& out, Stream stream) const noexcept { out = data(); }
+    void to_host(std::vector<T>& out) const noexcept { out = data(); }
 
     [[nodiscard]] T* release() noexcept {
         auto temp{m_Data.get()};
@@ -386,7 +389,7 @@ class NdArray {
         return temp;
     }
 
-    [[nodiscard]] std::shared_ptr<T> getUnderlying() const noexcept { return m_Data; }
+    // [[nodiscard]] std::shared_ptr<T> getUnderlying() const noexcept { return m_Data; }
 
     void synchronize() const noexcept {
         [[maybe_unused]]
@@ -490,9 +493,9 @@ class NdArray {
         return arr;
     }
 
-    static NdArray from_host(const std::vector<T>& data,
-                             const std::array<size_t, Rank>& dims,
-                             Stream stream) noexcept {
+    static NdArray fromHost(const std::vector<T>& data,
+                            const std::array<size_t, Rank>& dims,
+                            Stream stream) noexcept {
         NdArray arr(dims);
         if (data.size() != arr.size())
             CUDALERN_CRITICAL("Data size does not match array size");

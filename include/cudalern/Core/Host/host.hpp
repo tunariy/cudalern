@@ -24,7 +24,7 @@ namespace internal {
         MEMORYSTATUSEX status;
         status.dwLength = sizeof(status);
         GlobalMemoryStatusEx(&status);
-        return status.ullAvailPhys;  // free physical memory
+        return status.ullAvailPhys;
     }
 
 #elif defined(__linux__)
@@ -33,17 +33,16 @@ namespace internal {
     inline uint64_t getHostMemoryBytes() {
         struct sysinfo info;
         if (sysinfo(&info) != 0) return 0;
-        return info.totalram;  // total RAM in bytes
+        return info.totalram;
     }
 
     inline uint64_t getHostFreeMemoryBytes() {
         struct sysinfo info;
         if (sysinfo(&info) != 0) return 0;
-        return info.freeram;  // free RAM in bytes
+        return info.freeram;
     }
 
 #else
-    // Fallback for other Unix (macOS, BSD, etc.)
     inline uint64_t getHostMemoryBytes() {
         long pages = sysconf(_SC_PHYS_PAGES);
         long page_size = sysconf(_SC_PAGE_SIZE);
@@ -51,7 +50,6 @@ namespace internal {
     }
 
     inline uint64_t getHostFreeMemoryBytes() {
-        // Not implemented for this platform; return 0 or throw.
         return 0;
     }
 #endif

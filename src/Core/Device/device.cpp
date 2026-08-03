@@ -1,12 +1,11 @@
 #include "cudalern/Core/Device/device.hpp"
 #include "cudalern/ABI/kernel/kernel.cuh"
 #include "cudalern/ABI/memory/stream.hpp"
+
 #include "cudalern/Core/core.hpp"
 
 #include <cuda_runtime_api.h>
-#include "cudalern/Core/err.hpp"
 
-#include <cstddef>
 #include <driver_types.h>
 #include <iostream>
 #include <ostream>
@@ -22,7 +21,7 @@ namespace internal {
         if (err)
             CUDALERN_ERR(CUDALERN_ERROR_MESSAGE("Failed to set device! ", err));
         else
-            CUDALERN_ERR(CUDALERN_ERROR_MESSAGE("Device is now set to: ", err));
+            CUDALERN_INFO("Device is now set to: ");
         return err;
     }
 
@@ -58,7 +57,7 @@ DeviceProperties::DeviceProperties(int device) noexcept {
     m_regsPerBlock = m_DeviceProps.regsPerBlock;
     m_maxThreadsPerBlock = m_DeviceProps.maxThreadsPerBlock;
 
-    for (size_t i{}; i < 3; ++i) {
+    for (auto i{0}; i < 3; ++i) {
         m_maxThreadsDim[i] = m_DeviceProps.maxThreadsDim[i];
         m_maxGridSize[i] = m_DeviceProps.maxGridSize[i];
     }

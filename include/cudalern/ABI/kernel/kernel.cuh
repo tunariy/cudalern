@@ -17,11 +17,9 @@
         #define atomicAdd(addr, val) (*(addr) += (val))
     #endif
 
-    #include <climits>
     #include <cstdint>
     #include <functional>
     #include <math.h>
-    #include <numbers>
 
 namespace cudalern {
 namespace kernel {

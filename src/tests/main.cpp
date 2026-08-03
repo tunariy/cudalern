@@ -18,12 +18,10 @@ auto main() -> int {
         }
     }
 
-    auto nd3 = std::move(cudalern::NdArray<int, 3>(data3d));
+    auto nd3 {cudalern::NdArray<int, 3>(data3d)};
 
-    auto a = nd3[1];
-    std::clog << nd3[1][1][1].get() << std::endl;
     nd3[1][1][1] = 31;
-    std::clog << nd3[1][1][1].get() << std::endl;
+
     /*
      * SPACING
      * SPACING

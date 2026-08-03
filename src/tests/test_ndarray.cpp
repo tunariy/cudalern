@@ -174,7 +174,7 @@ TEST_F(NdArrayTest, ToHost) {
     auto arr = cudalern::NdArray<int, 1>::arange(20, 25, 1);
     std::vector<int> host;
     host.reserve(arr.size());
-    arr.to_host(host, cudalern::Stream());
+    arr.to_host(host);
     std::vector<int> expected = {20, 21, 22, 23, 24};
     EXPECT_EQ(host, expected);
 }
@@ -207,7 +207,7 @@ TEST_F(NdArrayTest, Managed) {
 TEST_F(NdArrayTest, FromHost) {
     std::vector<int> host_data = {10, 20, 30, 40, 50};
     std::array<std::size_t, 1> dims = {5};
-    auto arr = cudalern::NdArray<int, 1>::from_host(host_data, dims, cudalern::Stream());
+    auto arr = cudalern::NdArray<int, 1>::fromHost(host_data, dims, cudalern::Stream());
     auto vec = arr.data();
     EXPECT_EQ(vec, host_data);
 }
@@ -224,13 +224,13 @@ TEST_F(NdArrayTest, Release) {
     EXPECT_TRUE(arr.empty());
 }
 
-TEST_F(NdArrayTest, GetUnderlying) {
-    std::array<std::size_t, 1> dims = {1};
-    auto arr = cudalern::NdArray<int, 1>::full(dims, 42);
-    auto ptr = arr.getUnderlying();
-    EXPECT_NE(ptr, nullptr);
-    // ptr is a shared_ptr, so it's safe.
-}
+// TEST_F(NdArrayTest, GetUnderlying) {
+//     std::array<std::size_t, 1> dims = {1};
+//     auto arr = cudalern::NdArray<int, 1>::full(dims, 42);
+//     auto ptr = arr.getUnderlying();
+//     EXPECT_NE(ptr, nullptr);
+//     // ptr is a shared_ptr, so it's safe.
+// }
 
 // -----------------------------------------------------------------------------
 // Utilities
