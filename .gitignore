@@ -7,5 +7,7 @@
 build
 
 Testing
+benchtools_results
+*.ini
 
 TODO.md

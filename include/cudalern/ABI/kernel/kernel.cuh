@@ -23,7 +23,6 @@
 
 namespace cudalern {
 namespace kernel {
-    #if 1
     /**
      * @brief Empty kernel call to speed up the initial kernel call
      */
@@ -348,6 +347,31 @@ namespace kernel {
                                     uint32_t K);
 
     /**
+     * @brief
+     *
+     * @tparam T
+     * @tparam Rank
+     * @param A
+     * @param B
+     * @param C
+     * @param dimsA
+     * @param stridesA
+     * @param stridesB
+     * @param stridesC
+     * @param M
+     * @param K
+     * @param N
+     * @param totalElems
+     */
+    template <typename T, std::size_t Rank>
+    __global__ void batched_matmul_kernel(const T* A, const T* B, T* C,
+                                          const size_t* dimsA, const size_t* dimsB,
+                                          const size_t* dimsC, const size_t* stridesA,
+                                          const size_t* stridesB, const size_t* stridesC,
+                                          size_t M, size_t K, size_t N,
+                                          size_t totalElems);
+
+    /**
      * @brief Out‑of‑place matrix transpose.
      * @tparam T Element type.
      * @param dst Destination array (rows*cols).
@@ -459,7 +483,6 @@ namespace kernel {
      */
     template <typename T>
     __global__ void softmax(T* c, const T* a, uint32_t size);
-    #endif
 
     // Device‑side implementations
     #ifdef __CUDACC__
@@ -684,6 +707,48 @@ namespace kernel {
             }
             C[row * N + col] = sum;
         }
+    }
+
+    template <typename T, std::size_t Rank>
+    __global__ void batched_matmul_kernel(const T* A, const T* B, T* C,
+                                          const size_t* dimsA, const size_t* dimsB,
+                                          const size_t* dimsC, const size_t* stridesA,
+                                          const size_t* stridesB, const size_t* stridesC,
+                                          size_t M, size_t K, size_t N,
+                                          size_t totalElems) {
+        size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+        if (tid >= totalElems) return;
+
+        size_t batch_idx = tid / (M * N);
+        size_t local = tid % (M * N);
+        size_t i = local / N;
+        size_t j = local % N;
+
+        size_t offsetA = 0, offsetB = 0, offsetC = 0;
+        if constexpr (Rank > 2) {
+            size_t tmp = batch_idx;
+            for (int d = static_cast<int>(Rank) - 3; d >= 0; --d) {
+                size_t idx = tmp % dimsA[d];
+                tmp /= dimsA[d];
+                offsetA += idx * stridesA[d];
+                offsetB += idx * stridesB[d];
+                offsetC += idx * stridesC[d];
+            }
+        }
+
+        size_t sA_row = stridesA[Rank - 2];
+        size_t sA_col = stridesA[Rank - 1];
+        size_t sB_row = stridesB[Rank - 2];
+        size_t sB_col = stridesB[Rank - 1];
+        size_t sC_row = stridesC[Rank - 2];
+        size_t sC_col = stridesC[Rank - 1];
+
+        T sum = 0;
+        for (size_t k = 0; k < K; ++k) {
+            sum += A[offsetA + i * sA_row + k * sA_col] *
+                   B[offsetB + k * sB_row + j * sB_col];
+        }
+        C[offsetC + i * sC_row + j * sC_col] = sum;
     }
 
     template <typename T>

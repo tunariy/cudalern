@@ -13,7 +13,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Ubuntu with Clang
           - os: ubuntu-latest
             build_type: Debug
             c_compiler: clang
@@ -22,7 +21,6 @@ jobs:
             build_type: Release
             c_compiler: clang
             cpp_compiler: clang++
-          # Windows with MSVC
           - os: windows-latest
             build_type: Debug
             c_compiler: cl
@@ -39,6 +37,18 @@ jobs:
       if: runner.os == 'Windows'
       uses: ilammy/msvc-dev-cmd@v1
 
+    - name: Install CUDA (Linux)
+      if: runner.os == 'Linux'
+      uses: ezaquarii/cuda-toolkit@v1
+      with:
+        version: '13.1'
+
+    - name: Install CUDA (Windows)
+      if: runner.os == 'Windows'
+      uses: Jimver/cuda-toolkit@v0.2.12
+      with:
+        cuda: '13.1.0'
+
     - name: Install Linux dependencies
       if: runner.os == 'Linux'
       run: |
@@ -54,21 +64,21 @@ jobs:
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
-    # Install Ninja 
     - name: Install Ninja (Linux)
       if: runner.os == 'Linux'
       run: sudo apt-get update && sudo apt-get install -y ninja-build
+
     - name: Install Ninja (Windows)
       if: runner.os == 'Windows'
       run: choco install ninja
 
-    # Cache build directory to speed up rebuilds
     - name: Cache build directory
       uses: actions/cache@v4
       with:
         path: ${{ steps.strings.outputs.build-output-dir }}
-        key: ${{ runner.os }}-${{ matrix.build_type }}-${{ matrix.c_compiler }}-${{ hashFiles('**/*.cpp', '**/*.h', '**/*.c', '**/CMakeLists.txt', '**/*.cmake') }}
+        key: ${{ runner.os }}-${{ matrix.build_type }}-${{ matrix.c_compiler }}-cuda13.1-${{ hashFiles('**/*.cpp', '**/*.h', '**/*.c', '**/CMakeLists.txt', '**/*.cmake') }}
         restore-keys: |
+          ${{ runner.os }}-${{ matrix.build_type }}-${{ matrix.c_compiler }}-cuda13.1-
           ${{ runner.os }}-${{ matrix.build_type }}-${{ matrix.c_compiler }}-
           ${{ runner.os }}-${{ matrix.build_type }}-
           ${{ runner.os }}-

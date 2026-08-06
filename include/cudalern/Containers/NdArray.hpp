@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cudalern/ABI/memory/memory.hpp"
+#include "driver_types.h"
 #include <cmath>
 #include <cudalern/ABI/kernel/kernel.cuh>
 #include <cudalern/ABI/kernel/kernel_wrappers.hpp>
@@ -197,15 +199,15 @@ class NdArray {
 
         // Deduce the dimensions using the param pack
         if constexpr (sizeof...(Sequence_t) == 1) {
-            deduceDimensions<0>(std::get<0>(std::tuple(args...)), m_Dimensions);
+            this->deduceDimensions<0>(std::get<0>(std::tuple(args...)), m_Dimensions);
         } else {
             m_Dimensions[0] = sizeof...(Sequence_t);
 
             auto first_arg = std::get<0>(std::tuple(args...));
-            deduceDimensions<1>(first_arg, m_Dimensions);
+            this->deduceDimensions<1>(first_arg, m_Dimensions);
         }
 
-        computeStrides();
+        this->computeStrides();
 
         // Calculating the total size
         m_Size = 1;
@@ -238,7 +240,7 @@ class NdArray {
 
         [[maybe_unused]] auto err = memcpy(m_Data.get(), hostData.data(), m_Size,
                                            memcpyKind::HostToDevice, m_Stream);
-        synchronize();
+        this->synchronize();
     }
 
     NdArray(const NdArray<T, Rank>& rhs) {
@@ -318,15 +320,564 @@ class NdArray {
     }
 
   public:
+    /**
+     * @briefa
+     *
+     * @tparam diffRank
+     */
     template <std::size_t diffRank>
-        requires(Rank == diffRank)
-    NdArray operator*(const NdArray<T, diffRank>& rhs) const noexcept {}
+        requires(Rank == diffRank && Rank >= 2)
+    NdArray<T, Rank> operator*(const NdArray<T, diffRank>& rhs) const noexcept {
+        static_assert(Rank >= 2);
 
-    NdArray operator*(const T& val) const noexcept {}
+        if (!m_Data || !rhs.m_Data) return NdArray<T, Rank>();
 
-    void operator*=(const T& val) const noexcept {}
+        // Check batch dimensions
+        for (std::size_t d = 0; d < Rank - 2; ++d)
+            if (m_Dimensions[d] != rhs.m_Dimensions[d]) return NdArray<T, Rank>();
 
-    void operator*=(const NdArray& rhs) const noexcept {}
+        size_t M = m_Dimensions[Rank - 2];
+        size_t K = m_Dimensions[Rank - 1];
+        size_t N = rhs.m_Dimensions[Rank - 1];
+        if (K != rhs.m_Dimensions[Rank - 2]) return NdArray<T, Rank>();
+
+        // Result dimensions
+        std::array<size_t, Rank> result_dims = m_Dimensions;
+        result_dims[Rank - 2] = M;
+        result_dims[Rank - 1] = N;
+
+        // Result strides (row‑major contiguous)
+        std::array<size_t, Rank> result_strides;
+        size_t stride = 1;
+        for (int d = static_cast<int>(Rank) - 1; d >= 0; --d) {
+            result_strides[d] = stride;
+            stride *= result_dims[d];
+        }
+
+        // Total number of output elements
+        size_t batch_count = 1;
+        for (size_t d = 0; d < Rank - 2; ++d)
+            batch_count *= m_Dimensions[d];
+
+        size_t totalElems = batch_count * M * N;
+        if (totalElems == 0) return NdArray<T, Rank>();
+
+        size_t* d_dimsA{};
+        size_t* d_dimsB{};
+        size_t* d_dimsC{};
+        size_t* d_stridesA{};
+        size_t* d_stridesB{};
+        size_t* d_stridesC{};
+
+        auto cleanupDeviceDim = [&d_dimsA, &d_dimsB, &d_dimsC, &d_stridesA, &d_stridesB,
+                                 &d_stridesC]() {
+            allocator<size_t>::template deallocate<allocatorPolicy::Device>(d_dimsA);
+            allocator<size_t>::template deallocate<allocatorPolicy::Device>(d_dimsB);
+            allocator<size_t>::template deallocate<allocatorPolicy::Device>(d_dimsC);
+            allocator<size_t>::template deallocate<allocatorPolicy::Device>(d_stridesA);
+            allocator<size_t>::template deallocate<allocatorPolicy::Device>(d_stridesB);
+            allocator<size_t>::template deallocate<allocatorPolicy::Device>(d_stridesC);
+        };
+
+        auto allocateCopy = [&](size_t*& dst, const std::array<size_t, Rank>& src,
+                                const Stream& stream) -> cudalernErr {
+            dst = allocator<size_t>::template allocate<allocatorPolicy::Device>(Rank);
+            if (!dst) return cudaErrorUnknown;
+
+            if (memcpy(dst, src.data(), Rank, memcpyKind::HostToDevice, stream)) {
+                allocator<size_t>::template deallocate<allocatorPolicy::Device>(dst);
+                dst = nullptr;
+                return cudaErrorUnknown;
+            }
+            return cudaSuccess;
+        };
+
+        allocateCopy(d_dimsA, m_Dimensions, m_Stream);
+        allocateCopy(d_dimsB, rhs.m_Dimensions, m_Stream);
+        allocateCopy(d_dimsC, result_dims, m_Stream);
+        allocateCopy(d_stridesA, m_Strides, m_Stream);
+        allocateCopy(d_stridesB, rhs.m_Strides, m_Stream);
+        allocateCopy(d_stridesC, result_strides, m_Stream);
+
+        // --- Allocate result memory using the class allocator ---
+        T* d_result = allocator<T>::template allocate<allocatorPolicy::Device>(totalElems,
+                                                                               m_Stream);
+        if (!d_result) {
+            cleanupDeviceDim();
+            return NdArray<T, Rank>();
+        }
+
+        std::shared_ptr<T> resultPtr(d_result, DeviceDeleter<T>());
+        NdArray<T, Rank> result(resultPtr, result_dims);
+
+        // --- Launch kernel ---
+        cudalernErr launchErr = launchKernel1D(
+            kernel::batched_matmul_kernel<T, Rank>,
+            0,           // shared memory size
+            m_Stream,    // stream
+            totalElems,  // total elements (1D grid)
+            m_Data.get(), rhs.m_Data.get(), resultPtr.get(), d_dimsA, d_dimsB, d_dimsC,
+            d_stridesA, d_stridesB, d_stridesC, M, K, N, totalElems);
+
+        synchronize();
+        cleanupDeviceDim();
+
+        if (launchErr != cudaSuccess) return NdArray<T, Rank>();
+
+        return result;
+    }
+
+    // -------------------------------------------------------------------------
+    // Unary negation
+    // -------------------------------------------------------------------------
+    /** Returns a new array with all elements negated. */
+    NdArray<T, Rank> operator-() const noexcept {
+        if (!m_Data || m_Size == 0) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err = launchKernel1D(kernel::negate_kernel<T>, 0, m_Stream, m_Size,
+                                         result.m_Data.get(), m_Data.get(),
+                                         static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    // -------------------------------------------------------------------------
+    // Scalar arithmetic (return new array)
+    // -------------------------------------------------------------------------
+    /** Element-wise addition with scalar, returns new array. */
+    NdArray<T, Rank> operator+(const T& val) const noexcept {
+        if (!m_Data || m_Size == 0) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err = launchKernel1D(
+            (void (*)(T*, const T*, T, uint32_t))kernel::add<T>, 0, m_Stream, m_Size,
+            result.m_Data.get(), m_Data.get(), val, static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise subtraction with scalar, returns new array. */
+    NdArray<T, Rank> operator-(const T& val) const noexcept {
+        if (!m_Data || m_Size == 0) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err = launchKernel1D(
+            (void (*)(T*, const T*, T, uint32_t))kernel::sub<T>, 0, m_Stream, m_Size,
+            result.m_Data.get(), m_Data.get(), val, static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise multiplication with scalar, returns new array. */
+    NdArray<T, Rank> operator*(const T& val) const noexcept {
+        if (!m_Data || m_Size == 0) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err = launchKernel1D(
+            (void (*)(T*, const T*, T, uint32_t))kernel::mul<T>, 0, m_Stream, m_Size,
+            result.m_Data.get(), m_Data.get(), val, static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise division with scalar, returns new array. */
+    NdArray<T, Rank> operator/(const T& val) const noexcept {
+        if (!m_Data || m_Size == 0) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err = launchKernel1D(
+            (void (*)(T*, const T*, T, uint32_t))kernel::div<T>, 0, m_Stream, m_Size,
+            result.m_Data.get(), m_Data.get(), val, static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    // -------------------------------------------------------------------------
+    // Array-array elementwise arithmetic (return new array)
+    // -------------------------------------------------------------------------
+    /** Element-wise addition of two arrays, returns new array. */
+    NdArray<T, Rank> operator+(const NdArray<T, Rank>& rhs) const noexcept {
+        if (!m_Data || !rhs.m_Data || m_Size != rhs.m_Size) return NdArray<T, Rank>();
+        for (size_t d = 0; d < Rank; ++d)
+            if (m_Dimensions[d] != rhs.m_Dimensions[d]) return NdArray<T, Rank>();
+
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err =
+            launchKernel1D((void (*)(T*, const T*, const T*, uint32_t))kernel::add<T>, 0,
+                           m_Stream, m_Size, result.m_Data.get(), m_Data.get(),
+                           rhs.m_Data.get(), static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise subtraction of two arrays, returns new array. */
+    NdArray<T, Rank> operator-(const NdArray<T, Rank>& rhs) const noexcept {
+        if (!m_Data || !rhs.m_Data || m_Size != rhs.m_Size) return NdArray<T, Rank>();
+        for (size_t d = 0; d < Rank; ++d)
+            if (m_Dimensions[d] != rhs.m_Dimensions[d]) return NdArray<T, Rank>();
+
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err =
+            launchKernel1D((void (*)(T*, const T*, const T*, uint32_t))kernel::sub<T>, 0,
+                           m_Stream, m_Size, result.m_Data.get(), m_Data.get(),
+                           rhs.m_Data.get(), static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise multiplication of two arrays (using operator% to avoid conflict with
+     * matrix multiplication). */
+    NdArray<T, Rank> operator%(const NdArray<T, Rank>& rhs) const noexcept {
+        if (!m_Data || !rhs.m_Data || m_Size != rhs.m_Size) return NdArray<T, Rank>();
+        for (size_t d = 0; d < Rank; ++d)
+            if (m_Dimensions[d] != rhs.m_Dimensions[d]) return NdArray<T, Rank>();
+
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err =
+            launchKernel1D((void (*)(T*, const T*, const T*, uint32_t))kernel::mul<T>, 0,
+                           m_Stream, m_Size, result.m_Data.get(), m_Data.get(),
+                           rhs.m_Data.get(), static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise multiplication of two arrays – for Rank == 1 (no matrix
+     * multiplication conflict). */
+    template <std::size_t diffRank>
+        requires(Rank == diffRank && Rank == 1)
+    NdArray<T, Rank> operator*(const NdArray<T, diffRank>& rhs) const noexcept {
+        return (*this) % rhs;  // reuse elementwise operator%
+    }
+
+    /** Element-wise division of two arrays, returns new array. */
+    NdArray<T, Rank> operator/(const NdArray<T, Rank>& rhs) const noexcept {
+        if (!m_Data || !rhs.m_Data || m_Size != rhs.m_Size) return NdArray<T, Rank>();
+        for (size_t d = 0; d < Rank; ++d)
+            if (m_Dimensions[d] != rhs.m_Dimensions[d]) return NdArray<T, Rank>();
+
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err =
+            launchKernel1D((void (*)(T*, const T*, const T*, uint32_t))kernel::div<T>, 0,
+                           m_Stream, m_Size, result.m_Data.get(), m_Data.get(),
+                           rhs.m_Data.get(), static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    // -------------------------------------------------------------------------
+    // In‑place scalar arithmetic
+    // -------------------------------------------------------------------------
+    /** In-place addition with scalar. */
+    void operator+=(const T& val) const noexcept {
+        if (!m_Data || m_Size == 0) return;
+        cudalernErr err = launchKernel1D(
+            (void (*)(T*, const T*, T, uint32_t))kernel::add<T>, 0, m_Stream, m_Size,
+            m_Data.get(), m_Data.get(), val, static_cast<uint32_t>(m_Size));
+        if (err) CUDALERN_ERR("In-place scalar addition failed");
+    }
+
+    /** In-place subtraction with scalar. */
+    void operator-=(const T& val) const noexcept {
+        if (!m_Data || m_Size == 0) return;
+        cudalernErr err = launchKernel1D(
+            (void (*)(T*, const T*, T, uint32_t))kernel::sub<T>, 0, m_Stream, m_Size,
+            m_Data.get(), m_Data.get(), val, static_cast<uint32_t>(m_Size));
+        if (err) CUDALERN_ERR("In-place scalar subtraction failed");
+    }
+
+    /** In-place multiplication with scalar. */
+    void operator*=(const T& val) const noexcept {
+        if (!m_Data || m_Size == 0) return;
+        cudalernErr err = launchKernel1D(
+            (void (*)(T*, const T*, T, uint32_t))kernel::mul<T>, 0, m_Stream, m_Size,
+            m_Data.get(), m_Data.get(), val, static_cast<uint32_t>(m_Size));
+        if (err) CUDALERN_ERR("In-place scalar multiplication failed");
+    }
+
+    /** In-place division with scalar. */
+    void operator/=(const T& val) const noexcept {
+        if (!m_Data || m_Size == 0) return;
+        cudalernErr err = launchKernel1D(
+            (void (*)(T*, const T*, T, uint32_t))kernel::div<T>, 0, m_Stream, m_Size,
+            m_Data.get(), m_Data.get(), val, static_cast<uint32_t>(m_Size));
+        if (err) CUDALERN_ERR("In-place scalar division failed");
+    }
+
+    // -------------------------------------------------------------------------
+    // In‑place array-array arithmetic
+    // -------------------------------------------------------------------------
+    /** In-place element-wise addition with another array. */
+    void operator+=(const NdArray<T, Rank>& rhs) const noexcept {
+        if (!m_Data || !rhs.m_Data || m_Size != rhs.m_Size) {
+            CUDALERN_CRITICAL("Shape mismatch for in-place add");
+            return;
+        }
+        for (size_t d = 0; d < Rank; ++d)
+            if (m_Dimensions[d] != rhs.m_Dimensions[d]) {
+                CUDALERN_CRITICAL("Dimension mismatch for in-place add");
+                return;
+            }
+        cudalernErr err =
+            launchKernel1D((void (*)(T*, const T*, const T*, uint32_t))kernel::add<T>, 0,
+                           m_Stream, m_Size, m_Data.get(), m_Data.get(), rhs.m_Data.get(),
+                           static_cast<uint32_t>(m_Size));
+        if (err) CUDALERN_ERR("In-place array addition failed");
+    }
+
+    /** In-place element-wise subtraction with another array. */
+    void operator-=(const NdArray<T, Rank>& rhs) const noexcept {
+        if (!m_Data || !rhs.m_Data || m_Size != rhs.m_Size) {
+            CUDALERN_CRITICAL("Shape mismatch for in-place sub");
+            return;
+        }
+        for (size_t d = 0; d < Rank; ++d)
+            if (m_Dimensions[d] != rhs.m_Dimensions[d]) {
+                CUDALERN_CRITICAL("Dimension mismatch for in-place sub");
+                return;
+            }
+        cudalernErr err =
+            launchKernel1D((void (*)(T*, const T*, const T*, uint32_t))kernel::sub<T>, 0,
+                           m_Stream, m_Size, m_Data.get(), m_Data.get(), rhs.m_Data.get(),
+                           static_cast<uint32_t>(m_Size));
+        if (err) CUDALERN_ERR("In-place array subtraction failed");
+    }
+
+    /** In-place element-wise multiplication with another array (using operator%= for
+     * explicit). */
+    void operator%=(const NdArray<T, Rank>& rhs) const noexcept {
+        if (!m_Data || !rhs.m_Data || m_Size != rhs.m_Size) {
+            CUDALERN_CRITICAL("Shape mismatch for in-place mul");
+            return;
+        }
+        for (size_t d = 0; d < Rank; ++d)
+            if (m_Dimensions[d] != rhs.m_Dimensions[d]) {
+                CUDALERN_CRITICAL("Dimension mismatch for in-place mul");
+                return;
+            }
+        cudalernErr err =
+            launchKernel1D((void (*)(T*, const T*, const T*, uint32_t))kernel::mul<T>, 0,
+                           m_Stream, m_Size, m_Data.get(), m_Data.get(), rhs.m_Data.get(),
+                           static_cast<uint32_t>(m_Size));
+        if (err) CUDALERN_ERR("In-place array multiplication failed");
+    }
+
+    /** In-place element-wise multiplication with another array (using operator*= for
+     * convenience). */
+    void operator*=(const NdArray<T, Rank>& rhs) const noexcept { (*this) %= rhs; }
+
+    /** In-place element-wise division with another array. */
+    void operator/=(const NdArray<T, Rank>& rhs) const noexcept {
+        if (!m_Data || !rhs.m_Data || m_Size != rhs.m_Size) {
+            CUDALERN_CRITICAL("Shape mismatch for in-place div");
+            return;
+        }
+        for (size_t d = 0; d < Rank; ++d)
+            if (m_Dimensions[d] != rhs.m_Dimensions[d]) {
+                CUDALERN_CRITICAL("Dimension mismatch for in-place div");
+                return;
+            }
+        cudalernErr err =
+            launchKernel1D((void (*)(T*, const T*, const T*, uint32_t))kernel::div<T>, 0,
+                           m_Stream, m_Size, m_Data.get(), m_Data.get(), rhs.m_Data.get(),
+                           static_cast<uint32_t>(m_Size));
+        if (err) CUDALERN_ERR("In-place array division failed");
+    }
+
+    // -------------------------------------------------------------------------
+    // Comparison operators (return 0/1 arrays)
+    // -------------------------------------------------------------------------
+    /** Element-wise equality, returns array of 0/1. */
+    NdArray<T, Rank> operator==(const NdArray<T, Rank>& rhs) const noexcept {
+        if (!m_Data || !rhs.m_Data || m_Size != rhs.m_Size) return NdArray<T, Rank>();
+        for (size_t d = 0; d < Rank; ++d)
+            if (m_Dimensions[d] != rhs.m_Dimensions[d]) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err =
+            launchKernel1D(kernel::eq_kernel<T>, 0, m_Stream, m_Size, result.m_Data.get(),
+                           m_Data.get(), rhs.m_Data.get(), static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise inequality, returns array of 0/1. */
+    NdArray<T, Rank> operator!=(const NdArray<T, Rank>& rhs) const noexcept {
+        if (!m_Data || !rhs.m_Data || m_Size != rhs.m_Size) return NdArray<T, Rank>();
+        for (size_t d = 0; d < Rank; ++d)
+            if (m_Dimensions[d] != rhs.m_Dimensions[d]) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err =
+            launchKernel1D(kernel::ne_kernel<T>, 0, m_Stream, m_Size, result.m_Data.get(),
+                           m_Data.get(), rhs.m_Data.get(), static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise less-than, returns array of 0/1. */
+    NdArray<T, Rank> operator<(const NdArray<T, Rank>& rhs) const noexcept {
+        if (!m_Data || !rhs.m_Data || m_Size != rhs.m_Size) return NdArray<T, Rank>();
+        for (size_t d = 0; d < Rank; ++d)
+            if (m_Dimensions[d] != rhs.m_Dimensions[d]) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err =
+            launchKernel1D(kernel::lt_kernel<T>, 0, m_Stream, m_Size, result.m_Data.get(),
+                           m_Data.get(), rhs.m_Data.get(), static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise greater-than, returns array of 0/1. */
+    NdArray<T, Rank> operator>(const NdArray<T, Rank>& rhs) const noexcept {
+        if (!m_Data || !rhs.m_Data || m_Size != rhs.m_Size) return NdArray<T, Rank>();
+        for (size_t d = 0; d < Rank; ++d)
+            if (m_Dimensions[d] != rhs.m_Dimensions[d]) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err =
+            launchKernel1D(kernel::gt_kernel<T>, 0, m_Stream, m_Size, result.m_Data.get(),
+                           m_Data.get(), rhs.m_Data.get(), static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise less-or-equal, returns array of 0/1. */
+    NdArray<T, Rank> operator<=(const NdArray<T, Rank>& rhs) const noexcept {
+        if (!m_Data || !rhs.m_Data || m_Size != rhs.m_Size) return NdArray<T, Rank>();
+        for (size_t d = 0; d < Rank; ++d)
+            if (m_Dimensions[d] != rhs.m_Dimensions[d]) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err =
+            launchKernel1D(kernel::le_kernel<T>, 0, m_Stream, m_Size, result.m_Data.get(),
+                           m_Data.get(), rhs.m_Data.get(), static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise greater-or-equal, returns array of 0/1. */
+    NdArray<T, Rank> operator>=(const NdArray<T, Rank>& rhs) const noexcept {
+        if (!m_Data || !rhs.m_Data || m_Size != rhs.m_Size) return NdArray<T, Rank>();
+        for (size_t d = 0; d < Rank; ++d)
+            if (m_Dimensions[d] != rhs.m_Dimensions[d]) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err =
+            launchKernel1D(kernel::ge_kernel<T>, 0, m_Stream, m_Size, result.m_Data.get(),
+                           m_Data.get(), rhs.m_Data.get(), static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    // -------------------------------------------------------------------------
+    // Element-wise mathematical functions (return new array)
+    // -------------------------------------------------------------------------
+    /** Element-wise power: c[i] = pow(a[i], exponent). */
+    NdArray<T, Rank> pow(T exponent) const noexcept {
+        if (!m_Data || m_Size == 0) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err = launchKernel1D(kernel::pow_kernel<T>, 0, m_Stream, m_Size,
+                                         result.m_Data.get(), m_Data.get(), exponent,
+                                         static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise exponential: c[i] = exp(a[i]). */
+    NdArray<T, Rank> exp() const noexcept {
+        if (!m_Data || m_Size == 0) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err = launchKernel1D(kernel::exp_kernel<T>, 0, m_Stream, m_Size,
+                                         result.m_Data.get(), m_Data.get(),
+                                         static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise natural logarithm: c[i] = log(a[i]). */
+    NdArray<T, Rank> log() const noexcept {
+        if (!m_Data || m_Size == 0) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err = launchKernel1D(kernel::log_kernel<T>, 0, m_Stream, m_Size,
+                                         result.m_Data.get(), m_Data.get(),
+                                         static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise square root: c[i] = sqrt(a[i]). */
+    NdArray<T, Rank> sqrt() const noexcept {
+        if (!m_Data || m_Size == 0) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err = launchKernel1D(kernel::sqrt_kernel<T>, 0, m_Stream, m_Size,
+                                         result.m_Data.get(), m_Data.get(),
+                                         static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise absolute value: c[i] = abs(a[i]). */
+    NdArray<T, Rank> abs() const noexcept {
+        if (!m_Data || m_Size == 0) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err = launchKernel1D(kernel::abs_kernel<T>, 0, m_Stream, m_Size,
+                                         result.m_Data.get(), m_Data.get(),
+                                         static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    // -------------------------------------------------------------------------
+    // Activation functions (return new array)
+    // -------------------------------------------------------------------------
+    /** Element-wise ReLU: c[i] = max(0, a[i]). */
+    NdArray<T, Rank> relu() const noexcept {
+        if (!m_Data || m_Size == 0) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err =
+            launchKernel1D(kernel::relu<T>, 0, m_Stream, m_Size, result.m_Data.get(),
+                           m_Data.get(), static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise Leaky ReLU: c[i] = a[i] if a[i]>0 else alpha*a[i]. */
+    NdArray<T, Rank> leaky_relu(T alpha = static_cast<T>(0.01)) const noexcept {
+        if (!m_Data || m_Size == 0) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err = launchKernel1D(kernel::leaky_relu<T>, 0, m_Stream, m_Size,
+                                         result.m_Data.get(), m_Data.get(), alpha,
+                                         static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise sigmoid: c[i] = 1/(1+exp(-a[i])). */
+    NdArray<T, Rank> sigmoid() const noexcept {
+        if (!m_Data || m_Size == 0) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err =
+            launchKernel1D(kernel::sigmoid<T>, 0, m_Stream, m_Size, result.m_Data.get(),
+                           m_Data.get(), static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /** Element-wise tanh: c[i] = tanh(a[i]). */
+    NdArray<T, Rank> tanh() const noexcept {
+        if (!m_Data || m_Size == 0) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        cudalernErr err = launchKernel1D(kernel::tanh_kernel<T>, 0, m_Stream, m_Size,
+                                         result.m_Data.get(), m_Data.get(),
+                                         static_cast<uint32_t>(m_Size));
+        if (err) return NdArray<T, Rank>();
+        return result;
+    }
+
+    /**
+     * @brief Softmax (1D only): c[i] = exp(a[i]) / sum(exp(a)).
+     * @note This is a simplified implementation; for production, use a dedicated wrapper.
+     */
+    NdArray<T, Rank> softmax() const noexcept {
+        static_assert(Rank == 1, "softmax only valid for 1D arrays");
+        if (!m_Data || m_Size == 0) return NdArray<T, Rank>();
+        NdArray<T, Rank> result(m_Dimensions);
+        // Placeholder – the kernel requires custom block/grid and shared memory.
+        // For a full implementation, adapt your launchKernel wrapper.
+        // Returning empty for now.
+        return NdArray<T, Rank>();
+    }
 
   public:
     template <class... Args>

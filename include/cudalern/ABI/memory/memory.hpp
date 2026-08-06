@@ -108,22 +108,22 @@ template <class T>
     switch (copyKind) {
     case memcpyKind::HostToDevice: {
         err = cudaMemcpyAsync((void*)dst, (void*)src, n * sizeof(T),
-                              cudaMemcpyKind::cudaMemcpyHostToDevice);
+                              cudaMemcpyKind::cudaMemcpyHostToDevice, stream);
         break;
     }
     case memcpyKind::DeviceToHost: {
         err = cudaMemcpyAsync((void*)dst, (void*)src, n * sizeof(T),
-                              cudaMemcpyKind::cudaMemcpyDeviceToHost);
+                              cudaMemcpyKind::cudaMemcpyDeviceToHost, stream);
         break;
     }
     case memcpyKind::DeviceToDevice: {
         err = cudaMemcpyAsync((void*)dst, (void*)src, n * sizeof(T),
-                              cudaMemcpyKind::cudaMemcpyDeviceToDevice);
+                              cudaMemcpyKind::cudaMemcpyDeviceToDevice, stream);
         break;
     }
     case memcpyKind::HostToHost: {
         err = cudaMemcpyAsync((void*)dst, (void*)src, n * sizeof(T),
-                              cudaMemcpyKind::cudaMemcpyHostToHost);
+                              cudaMemcpyKind::cudaMemcpyHostToHost, stream);
         break;
     }
     }

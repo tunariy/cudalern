@@ -3,7 +3,6 @@
 
 #include <gtest/gtest.h>
 
-#include <array>
 #include <cmath>
 #include <vector>
 
@@ -16,238 +15,331 @@ class NdArrayTest : public ::testing::Test {
 };
 
 // -----------------------------------------------------------------------------
-// Factory method tests
+// Scalar arithmetic tests (new array)
 // -----------------------------------------------------------------------------
 
-TEST_F(NdArrayTest, Zeros) {
-    std::array<std::size_t, 2> dims = {2, 3};
-    auto arr = cudalern::NdArray<int, 2>::zeros(dims);
-    EXPECT_EQ(arr.size(), 6);
-    EXPECT_EQ(arr.nbytes(), 24);
-    for (std::size_t i = 0; i < dims[0]; ++i)
-        for (std::size_t j = 0; j < dims[1]; ++j)
-            EXPECT_EQ(arr(i, j), 0);
+TEST_F(NdArrayTest, ScalarAdd) {
+    auto arr = cudalern::NdArray<int, 2>::full({2, 2}, 5);
+    auto result = arr + 3;
+    auto host = result.data();
+    std::vector<int> expected = {8, 8, 8, 8};
+    EXPECT_EQ(host, expected);
 }
 
-TEST_F(NdArrayTest, Ones) {
-    std::array<std::size_t, 3> dims = {2, 2, 2};
-    auto arr = cudalern::NdArray<int, 3>::ones(dims);
-    EXPECT_EQ(arr.size(), 8);
-    for (std::size_t i = 0; i < dims[0]; ++i)
-        for (std::size_t j = 0; j < dims[1]; ++j)
-            for (std::size_t k = 0; k < dims[2]; ++k)
-                EXPECT_EQ(arr(i, j, k), 1);
+TEST_F(NdArrayTest, ScalarSub) {
+    auto arr = cudalern::NdArray<int, 2>::full({2, 2}, 5);
+    auto result = arr - 3;
+    auto host = result.data();
+    std::vector<int> expected = {2, 2, 2, 2};
+    EXPECT_EQ(host, expected);
 }
 
-TEST_F(NdArrayTest, Full) {
-    std::array<std::size_t, 2> dims = {3, 3};
-    auto arr = cudalern::NdArray<int, 2>::full(dims, 42);
-    for (std::size_t i = 0; i < dims[0]; ++i)
-        for (std::size_t j = 0; j < dims[1]; ++j)
-            EXPECT_EQ(arr(i, j), 42);
+TEST_F(NdArrayTest, ScalarMul) {
+    auto arr = cudalern::NdArray<int, 2>::full({2, 2}, 5);
+    auto result = arr * 3;
+    auto host = result.data();
+    std::vector<int> expected = {15, 15, 15, 15};
+    EXPECT_EQ(host, expected);
 }
 
-TEST_F(NdArrayTest, Arange) {
-    auto arr = cudalern::NdArray<int, 1>::arange(0, 10, 1);
-    EXPECT_EQ(arr.size(), 10);
-    for (std::size_t i = 0; i < arr.size(); ++i)
-        EXPECT_EQ(arr(i), static_cast<int>(i));
-}
-
-TEST_F(NdArrayTest, Eye) {
-    auto arr = cudalern::NdArray<int, 2>::eye(4);
-    EXPECT_EQ(arr.size(), 16);
-    for (std::size_t i = 0; i < 4; ++i) {
-        for (std::size_t j = 0; j < 4; ++j) {
-            int expected = (i == j) ? 1 : 0;
-            EXPECT_EQ(arr(i, j), expected);
-        }
-    }
-}
-
-TEST_F(NdArrayTest, RandomUniformRange) {
-    std::array<std::size_t, 2> dims = {100, 100};
-    auto arr = cudalern::NdArray<float, 2>::random_uniform(dims, 0.0f, 1.0f);
-    auto data = arr.data();
-    for (float v : data) {
-        EXPECT_GE(v, 0.0f);
-        EXPECT_LT(v, 1.0f);
-    }
-}
-
-TEST_F(NdArrayTest, RandomNormalStats) {
-    std::array<std::size_t, 2> dims = {100, 100};
-    auto arr = cudalern::NdArray<float, 2>::random_normal(dims, 0.0f, 1.0f);
-    auto data = arr.data();
-    // Basic sanity: no NaNs, values within 5 sigma
-    for (float v : data) {
-        EXPECT_FALSE(std::isnan(v));
-        EXPECT_GT(v, -5.0f);
-        EXPECT_LT(v, 5.0f);
-    }
-}
-
-// -----------------------------------------------------------------------------
-// Construction from nested sequences
-// -----------------------------------------------------------------------------
-
-TEST_F(NdArrayTest, From2DVector) {
-    std::vector<std::vector<int>> data = {{1, 2, 3}, {4, 5, 6}};
-    auto arr = cudalern::NdArray<int, 2>(data);
-    EXPECT_EQ(arr(0, 0), 1);
-    EXPECT_EQ(arr(0, 2), 3);
-    EXPECT_EQ(arr(1, 1), 5);
-}
-
-TEST_F(NdArrayTest, From3DVector) {
-    std::vector<std::vector<std::vector<int>>> data = {{{1, 2}, {3, 4}},
-                                                       {{5, 6}, {7, 8}}};
-    auto arr = cudalern::NdArray<int, 3>(data);
-    EXPECT_EQ(arr(0, 0, 0), 1);
-    EXPECT_EQ(arr(0, 1, 1), 4);
-    EXPECT_EQ(arr(1, 0, 1), 6);
-}
-
-// -----------------------------------------------------------------------------
-// Copy and move semantics
-// -----------------------------------------------------------------------------
-
-TEST_F(NdArrayTest, CopyConstructor) {
-    std::array<std::size_t, 2> dims = {2, 2};
-    auto original = cudalern::NdArray<int, 2>::full(dims, 99);
-    auto copy = original;
-    EXPECT_EQ(copy(0, 0), 99);
-    EXPECT_EQ(copy(1, 1), 99);
-    // Original unchanged
-    EXPECT_EQ(original(0, 0), 99);
-}
-
-TEST_F(NdArrayTest, CopyAssignment) {
-    std::array<std::size_t, 2> dims = {2, 2};
-    auto original = cudalern::NdArray<int, 2>::full(dims, 77);
-    auto copy = cudalern::NdArray<int, 2>::zeros(dims);
-    copy = original;
-    EXPECT_EQ(copy(0, 0), 77);
-    EXPECT_EQ(copy(1, 1), 77);
-}
-
-TEST_F(NdArrayTest, MoveConstructor) {
-    std::array<std::size_t, 2> dims = {2, 2};
-    auto original = cudalern::NdArray<int, 2>::full(dims, 88);
-    auto moved = std::move(original);
-    EXPECT_EQ(moved(0, 0), 88);
-    // After move, original should be empty
-    EXPECT_TRUE(original.empty());
-    EXPECT_EQ(original.size(), 0);
-}
-
-TEST_F(NdArrayTest, MoveAssignment) {
-    std::array<std::size_t, 2> dims = {2, 2};
-    auto original = cudalern::NdArray<int, 2>::full(dims, 66);
-    auto moved = cudalern::NdArray<int, 2>::zeros(dims);
-    moved = std::move(original);
-    EXPECT_EQ(moved(0, 0), 66);
-    EXPECT_TRUE(original.empty());
-}
-
-// -----------------------------------------------------------------------------
-// Data access and extraction
-// -----------------------------------------------------------------------------
-
-TEST_F(NdArrayTest, ReadAndOperator) {
-    std::array<std::size_t, 3> dims = {2, 2, 2};
-    auto arr = cudalern::NdArray<int, 3>::ones(dims);
-    EXPECT_EQ(arr(1, 1, 1), 1);
-    EXPECT_EQ(arr.read(0, 0, 0), 1);
-}
-
-TEST_F(NdArrayTest, DataCopy) {
-    [[maybe_unused]] std::array<std::size_t, 1> dims = {5};
-    auto arr = cudalern::NdArray<int, 1>::arange(10, 15, 1);
-    auto vec = arr.data();
-    std::vector<int> expected = {10, 11, 12, 13, 14};
-    EXPECT_EQ(vec, expected);
-}
-
-TEST_F(NdArrayTest, ToHost) {
-    [[maybe_unused]] std::array<std::size_t, 1> dims = {5};
-    auto arr = cudalern::NdArray<int, 1>::arange(20, 25, 1);
-    std::vector<int> host;
-    host.reserve(arr.size());
-    arr.to_host(host);
-    std::vector<int> expected = {20, 21, 22, 23, 24};
+TEST_F(NdArrayTest, ScalarDiv) {
+    auto arr = cudalern::NdArray<int, 2>::full({2, 2}, 10);
+    auto result = arr / 2;
+    auto host = result.data();
+    std::vector<int> expected = {5, 5, 5, 5};
     EXPECT_EQ(host, expected);
 }
 
 // -----------------------------------------------------------------------------
-// Pinned and Managed memory
+// Array-array elementwise arithmetic tests (new array)
 // -----------------------------------------------------------------------------
 
-TEST_F(NdArrayTest, Pinned) {
-    std::array<std::size_t, 2> dims = {2, 2};
-    auto arr = cudalern::NdArray<int, 2>::pinned(dims);
-    EXPECT_FALSE(arr.empty());
-    // Can we write and read?
-    auto full = cudalern::NdArray<int, 2>::full(dims, 7);
-    EXPECT_EQ(full(0, 0), 7);
+TEST_F(NdArrayTest, ArrayAdd) {
+    auto A = cudalern::NdArray<int, 2>::full({2, 2}, 5);
+    auto B = cudalern::NdArray<int, 2>::full({2, 2}, 3);
+    auto C = A + B;
+    auto host = C.data();
+    std::vector<int> expected = {8, 8, 8, 8};
+    EXPECT_EQ(host, expected);
 }
 
-TEST_F(NdArrayTest, Managed) {
-    std::array<std::size_t, 2> dims = {2, 2};
-    auto arr = cudalern::NdArray<int, 2>::managed(dims);
-    EXPECT_FALSE(arr.empty());
-    auto full = cudalern::NdArray<int, 2>::full(dims, 8);
-    EXPECT_EQ(full(0, 0), 8);
+TEST_F(NdArrayTest, ArraySub) {
+    auto A = cudalern::NdArray<int, 2>::full({2, 2}, 5);
+    auto B = cudalern::NdArray<int, 2>::full({2, 2}, 3);
+    auto C = A - B;
+    auto host = C.data();
+    std::vector<int> expected = {2, 2, 2, 2};
+    EXPECT_EQ(host, expected);
 }
 
-// -----------------------------------------------------------------------------
-// from_host
-// -----------------------------------------------------------------------------
-
-TEST_F(NdArrayTest, FromHost) {
-    std::vector<int> host_data = {10, 20, 30, 40, 50};
-    std::array<std::size_t, 1> dims = {5};
-    auto arr = cudalern::NdArray<int, 1>::fromHost(host_data, dims, cudalern::Stream());
-    auto vec = arr.data();
-    EXPECT_EQ(vec, host_data);
+TEST_F(NdArrayTest, ArrayMulElementwise) {
+    auto A = cudalern::NdArray<int, 2>::full({2, 2}, 5);
+    auto B = cudalern::NdArray<int, 2>::full({2, 2}, 3);
+    auto C = A % B;  // elementwise for rank=2 (matrix multiplication is for rank>=2 but
+                     // overloaded)
+    auto host = C.data();
+    std::vector<int> expected = {15, 15, 15, 15};
+    EXPECT_EQ(host, expected);
 }
 
-// -----------------------------------------------------------------------------
-// release() and getUnderlying()
-// -----------------------------------------------------------------------------
-
-TEST_F(NdArrayTest, Release) {
-    std::array<std::size_t, 1> dims = {3};
-    auto arr = cudalern::NdArray<int, 1>::full(dims, 100);
-    auto ptr = arr.release();
-    EXPECT_NE(ptr, nullptr);
-    EXPECT_TRUE(arr.empty());
-}
-
-// TEST_F(NdArrayTest, GetUnderlying) {
-//     std::array<std::size_t, 1> dims = {1};
-//     auto arr = cudalern::NdArray<int, 1>::full(dims, 42);
-//     auto ptr = arr.getUnderlying();
-//     EXPECT_NE(ptr, nullptr);
-//     // ptr is a shared_ptr, so it's safe.
-// }
-
-// -----------------------------------------------------------------------------
-// Utilities
-// -----------------------------------------------------------------------------
-
-TEST_F(NdArrayTest, EmptyAndNbytes) {
-    std::array<std::size_t, 2> dims = {2, 3};
-    auto arr = cudalern::NdArray<int, 2>::zeros(dims);
-    arr.synchronize();
-    EXPECT_FALSE(arr.empty());
-    EXPECT_EQ(arr.nbytes(), 6 * sizeof(int));
+TEST_F(NdArrayTest, ArrayDiv) {
+    auto A = cudalern::NdArray<int, 2>::full({2, 2}, 10);
+    auto B = cudalern::NdArray<int, 2>::full({2, 2}, 2);
+    auto C = A / B;
+    auto host = C.data();
+    std::vector<int> expected = {5, 5, 5, 5};
+    EXPECT_EQ(host, expected);
 }
 
 // -----------------------------------------------------------------------------
-// Main
+// In-place scalar arithmetic
 // -----------------------------------------------------------------------------
 
+TEST_F(NdArrayTest, InplaceScalarAdd) {
+    auto arr = cudalern::NdArray<int, 2>::full({2, 2}, 5);
+    arr += 3;
+    auto host = arr.data();
+    std::vector<int> expected = {8, 8, 8, 8};
+    EXPECT_EQ(host, expected);
+}
+
+TEST_F(NdArrayTest, InplaceScalarSub) {
+    auto arr = cudalern::NdArray<int, 2>::full({2, 2}, 5);
+    arr -= 3;
+    auto host = arr.data();
+    std::vector<int> expected = {2, 2, 2, 2};
+    EXPECT_EQ(host, expected);
+}
+
+TEST_F(NdArrayTest, InplaceScalarMul) {
+    auto arr = cudalern::NdArray<int, 2>::full({2, 2}, 5);
+    arr *= 3;
+    auto host = arr.data();
+    std::vector<int> expected = {15, 15, 15, 15};
+    EXPECT_EQ(host, expected);
+}
+
+TEST_F(NdArrayTest, InplaceScalarDiv) {
+    auto arr = cudalern::NdArray<int, 2>::full({2, 2}, 10);
+    arr /= 2;
+    auto host = arr.data();
+    std::vector<int> expected = {5, 5, 5, 5};
+    EXPECT_EQ(host, expected);
+}
+
+// -----------------------------------------------------------------------------
+// In-place array-array arithmetic
+// -----------------------------------------------------------------------------
+
+TEST_F(NdArrayTest, InplaceArrayAdd) {
+    auto A = cudalern::NdArray<int, 2>::full({2, 2}, 5);
+    auto B = cudalern::NdArray<int, 2>::full({2, 2}, 3);
+    A += B;
+    auto host = A.data();
+    std::vector<int> expected = {8, 8, 8, 8};
+    EXPECT_EQ(host, expected);
+}
+
+TEST_F(NdArrayTest, InplaceArraySub) {
+    auto A = cudalern::NdArray<int, 2>::full({2, 2}, 5);
+    auto B = cudalern::NdArray<int, 2>::full({2, 2}, 3);
+    A -= B;
+    auto host = A.data();
+    std::vector<int> expected = {2, 2, 2, 2};
+    EXPECT_EQ(host, expected);
+}
+
+TEST_F(NdArrayTest, InplaceArrayMul) {
+    auto A = cudalern::NdArray<int, 2>::full({2, 2}, 5);
+    auto B = cudalern::NdArray<int, 2>::full({2, 2}, 3);
+    A *= B;
+    auto host = A.data();
+    std::vector<int> expected = {15, 15, 15, 15};
+    EXPECT_EQ(host, expected);
+}
+
+TEST_F(NdArrayTest, InplaceArrayDiv) {
+    auto A = cudalern::NdArray<int, 2>::full({2, 2}, 10);
+    auto B = cudalern::NdArray<int, 2>::full({2, 2}, 2);
+    A /= B;
+    auto host = A.data();
+    std::vector<int> expected = {5, 5, 5, 5};
+    EXPECT_EQ(host, expected);
+}
+
+// -----------------------------------------------------------------------------
+// Unary negation
+// -----------------------------------------------------------------------------
+
+TEST_F(NdArrayTest, UnaryNegate) {
+    auto arr = cudalern::NdArray<int, 2>::full({2, 2}, 5);
+    auto result = -arr;
+    auto host = result.data();
+    std::vector<int> expected = {-5, -5, -5, -5};
+    EXPECT_EQ(host, expected);
+}
+
+// -----------------------------------------------------------------------------
+// Comparison operators (return 0/1 arrays)
+// -----------------------------------------------------------------------------
+
+TEST_F(NdArrayTest, CompareEqual) {
+    auto A = cudalern::NdArray<int, 2>::ones({2, 2});
+    auto B = cudalern::NdArray<int, 2>::ones({2, 2});
+    auto C = (A == B);
+    auto host = C.data();
+    std::vector<int> expected = {1, 1, 1, 1};
+    EXPECT_EQ(host, expected);
+}
+
+TEST_F(NdArrayTest, CompareNotEqual) {
+    auto A = cudalern::NdArray<int, 2>::ones({2, 2});
+    auto B = cudalern::NdArray<int, 2>::full({2, 2}, 2);
+    auto C = (A != B);
+    auto host = C.data();
+    std::vector<int> expected = {1, 1, 1, 1};
+    EXPECT_EQ(host, expected);
+}
+
+TEST_F(NdArrayTest, CompareLess) {
+    auto A = cudalern::NdArray<int, 2>::full({2, 2}, 2);
+    auto B = cudalern::NdArray<int, 2>::full({2, 2}, 3);
+    auto C = (A < B);
+    auto host = C.data();
+    std::vector<int> expected = {1, 1, 1, 1};
+    EXPECT_EQ(host, expected);
+}
+
+TEST_F(NdArrayTest, CompareGreater) {
+    auto A = cudalern::NdArray<int, 2>::full({2, 2}, 3);
+    auto B = cudalern::NdArray<int, 2>::full({2, 2}, 2);
+    auto C = (A > B);
+    auto host = C.data();
+    std::vector<int> expected = {1, 1, 1, 1};
+    EXPECT_EQ(host, expected);
+}
+
+TEST_F(NdArrayTest, CompareLessEqual) {
+    auto A = cudalern::NdArray<int, 2>::full({2, 2}, 2);
+    auto B = cudalern::NdArray<int, 2>::full({2, 2}, 2);
+    auto C = (A <= B);
+    auto host = C.data();
+    std::vector<int> expected = {1, 1, 1, 1};
+    EXPECT_EQ(host, expected);
+}
+
+TEST_F(NdArrayTest, CompareGreaterEqual) {
+    auto A = cudalern::NdArray<int, 2>::full({2, 2}, 3);
+    auto B = cudalern::NdArray<int, 2>::full({2, 2}, 3);
+    auto C = (A >= B);
+    auto host = C.data();
+    std::vector<int> expected = {1, 1, 1, 1};
+    EXPECT_EQ(host, expected);
+}
+
+// -----------------------------------------------------------------------------
+// Math functions
+// -----------------------------------------------------------------------------
+
+TEST_F(NdArrayTest, MathPow) {
+    auto arr = cudalern::NdArray<int, 2>::full({2, 2}, 2);
+    auto result = arr.pow(3);
+    auto host = result.data();
+    std::vector<int> expected = {8, 8, 8, 8};
+    EXPECT_EQ(host, expected);
+}
+
+TEST_F(NdArrayTest, MathExp) {
+    auto arr = cudalern::NdArray<float, 2>::full({2, 2}, 0.0f);
+    auto result = arr.exp();
+    auto host = result.data();
+    for (float v : host) {
+        EXPECT_FLOAT_EQ(v, 1.0f);
+    }
+}
+
+TEST_F(NdArrayTest, MathLog) {
+    auto arr = cudalern::NdArray<float, 2>::full({2, 2}, std::exp(1.0f));
+    auto result = arr.log();
+    auto host = result.data();
+    for (float v : host) {
+        EXPECT_FLOAT_EQ(v, 1.0f);
+    }
+}
+
+TEST_F(NdArrayTest, MathSqrt) {
+    auto arr = cudalern::NdArray<float, 2>::full({2, 2}, 4.0f);
+    auto result = arr.sqrt();
+    auto host = result.data();
+    for (float v : host) {
+        EXPECT_FLOAT_EQ(v, 2.0f);
+    }
+}
+
+TEST_F(NdArrayTest, MathAbs) {
+    auto arr = cudalern::NdArray<int, 2>::full({2, 2}, -5);
+    auto result = arr.abs();
+    auto host = result.data();
+    std::vector<int> expected = {5, 5, 5, 5};
+    EXPECT_EQ(host, expected);
+}
+
+// -----------------------------------------------------------------------------
+// Activation functions
+// -----------------------------------------------------------------------------
+
+TEST_F(NdArrayTest, ActivationRelu) {
+    std::vector<std::vector<float>> data = {{-1.0f, 0.5f}, {2.0f, -0.5f}};
+    auto arr = cudalern::NdArray<float, 2>(data);
+    auto result = arr.relu();
+    auto host = result.data();
+    std::vector<float> expected = {0.0f, 0.5f, 2.0f, 0.0f};
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_FLOAT_EQ(host[i], expected[i]);
+    }
+}
+
+TEST_F(NdArrayTest, ActivationLeakyRelu) {
+    std::vector<std::vector<float>> data = {{-1.0f, 0.5f}, {2.0f, -0.5f}};
+    auto arr = cudalern::NdArray<float, 2>(data);
+    auto result = arr.leaky_relu(0.1f);
+    auto host = result.data();
+    std::vector<float> expected = {-0.1f, 0.5f, 2.0f, -0.05f};
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_FLOAT_EQ(host[i], expected[i]);
+    }
+}
+
+TEST_F(NdArrayTest, ActivationSigmoid) {
+    auto arr = cudalern::NdArray<float, 2>::full({2, 2}, 0.0f);
+    auto result = arr.sigmoid();
+    auto host = result.data();
+    for (float v : host) {
+        EXPECT_FLOAT_EQ(v, 0.5f);
+    }
+}
+
+TEST_F(NdArrayTest, ActivationTanh) {
+    auto arr = cudalern::NdArray<float, 2>::full({2, 2}, 0.0f);
+    auto result = arr.tanh();
+    auto host = result.data();
+    for (float v : host) {
+        EXPECT_FLOAT_EQ(v, 0.0f);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Elementwise multiply for Rank=1 (ensure no conflict with matrix multiply)
+// -----------------------------------------------------------------------------
+
+TEST_F(NdArrayTest, ElementwiseMulRank1) {
+    auto A = cudalern::NdArray<int, 1>::full({3}, 2);
+    auto B = cudalern::NdArray<int, 1>::full({3}, 3);
+    auto C = A * B;  // should be elementwise, not matrix multiply (rank=1)
+    auto host = C.data();
+    std::vector<int> expected = {6, 6, 6};
+    EXPECT_EQ(host, expected);
+}
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cudalern/Core/concepts.hpp"
 #include <cuda_runtime_api.h>
 #include <cudalern/ABI/memory/memory.hpp>
 #include <cudalern/ABI/memory/stream.hpp>
@@ -8,14 +9,13 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <type_traits>
 
 namespace cudalern {
 
 enum class allocatorPolicy : uint8_t { Pinned, Device, Managed };
 
 template <class T>
-    requires(std::is_integral_v<T> || std::is_floating_point_v<T>)
+    requires(CudaCompatible<T>)
 class allocator {
   public:
     allocator() = default;
