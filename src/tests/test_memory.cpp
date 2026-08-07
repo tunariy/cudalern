@@ -144,7 +144,8 @@ TEST_F(MemoryTest, AllocatorDeleters) {
         int* ptr =
             cudalern::allocator<int>::allocate<cudalern::allocatorPolicy::Device>(10);
         ASSERT_NE(ptr, nullptr);
-        cudalern::DeviceDeleter<int> deleter;
+        auto str = cudalern::Stream{};
+        cudalern::DeviceDeleter<int> deleter{str};
         deleter(ptr);
     }
     {
@@ -162,7 +163,8 @@ TEST_F(MemoryTest, AllocatorDeleters) {
         deleter(ptr);
     }
     {
-        cudalern::DeviceDeleter<int> deleter;
+        auto str = cudalern::Stream{};
+        cudalern::DeviceDeleter<int> deleter{str};
         deleter(nullptr);
     }
 }

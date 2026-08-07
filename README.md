@@ -4,17 +4,45 @@
 
 ## Current Features
 
-- [x] N-dimensional array on pinned or device memory
+- [x] N-dimensional array on host (pinned) or device memory
 
 ```cpp
-auto nd3 {cudalern::NdArray<int, 3>(data3d)};
+static const std::array<size_t, 3> dims = {3, 3, 3};
+auto nd {cudalern::NdArray<int, 3>::random_uniform(dims)};
+nd[1][1][1] = 31;
+std::cout << nd[1][1][1];
+```
 
-nd3[1][1][1] = 31;
+```cpp
+// or initialize with
+auto nd {cudalern::NdArray<int, 2>(
+    std::vector<int>{1, 2}, 
+    std::vector<int>{2, 1})} 
+    // produces [[1, 2], [2, 1]]
+```
+
+- [x] Support for many operations
+
+```cpp
+static const std::array<size_t, 2> dims = {1024, 1024};
+auto A = NdArray<float, 2>::random_uniform(dims);
+auto B = NdArray<float, 2>::random_uniform(dims);
+auto C = A * B; // matrix multiplication
+```
+
+- [x] Visualize your N-dimensional arrays
+
+```cpp
+auto A = NdArray<float, 3>::random_uniform(dims);
+```
+
+```bash
+[[[0.470848, 0.473661, 0.340334], [0.990252, 0.549664, 0.745849], ..]]
 ```
 
 - [x] Runtime device/host API for retrieving memory information or properties
 
-```bash
+```txt
 [2026-08-03 06:01:29.741] [GLOBAL] [info] Device is now set to: 
 [2026-08-03 06:01:29.741] [GLOBAL] [info] Initializing context for device: 0
 [2026-08-03 06:01:29.742] [GLOBAL] [info] Device Properties:
@@ -38,7 +66,7 @@ maxThreadsPerMultiProcessor: 1536 threads
 --------------------------------
 ```
 
-- [x] Custom wrappers for kernel launches
+- [x] Custom wrappers for launching kernels
 
 ```cpp
 launchKernel1D(kernel::eye<T>, 0, stream, size, device_ptr, dim, dim);
@@ -47,11 +75,11 @@ launchKernel1D(kernel::eye<T>, 0, stream, size, device_ptr, dim, dim);
 - [x] Kernel launch configuration is done at runtime optimized for the currently set device
 
 ```cpp
-    auto& props = gDeviceHandler.getDeviceProps();
-    auto maxThreadsPerBlock = props.getMaxThreadsPerBlock();
+auto& props = gDeviceHandler.getDeviceProps();
+auto maxThreadsPerBlock = props.getMaxThreadsPerBlock();
 
-    auto threadsPerBlock = maxThreadsPerBlock;
-    auto numBlocks = (N + maxThreadsPerBlock - 1) / maxThreadsPerBlock;
+auto threadsPerBlock = maxThreadsPerBlock;
+auto numBlocks = (N + maxThreadsPerBlock - 1) / maxThreadsPerBlock;
 ```
 
 - [x] Custom allocator for device, host memory management
@@ -67,10 +95,6 @@ class allocator {...};
 - [x] Custom CUDA stream management
 
 ## TODO
-
-## NdArray
-
-- [ ] Full element wise operation support
 
 ## Autograd and Training
 

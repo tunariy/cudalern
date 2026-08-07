@@ -56,7 +56,7 @@ class allocator {
     template <allocatorPolicy policy>
     static void deallocate(T* ptr, const Stream& stream = Stream()) noexcept {
         if constexpr (policy == allocatorPolicy::Device)
-            deallocateDevice<T>(ptr, stream.get());
+            deallocateDevice<T>(ptr, stream);
         else if constexpr (policy == allocatorPolicy::Pinned)
             deallocatePinned<T>(ptr);
         else if constexpr (policy == allocatorPolicy::Managed)
@@ -64,25 +64,28 @@ class allocator {
     }
 };
 
-template <typename T>
+template <class T>
 struct DeviceDeleter {
-    void operator()(T* ptr) const noexcept {
-        if (ptr) allocator<T>::template deallocate<allocatorPolicy::Device>(ptr);
+    Stream m_Stream;
+    DeviceDeleter() = default;
+    explicit DeviceDeleter(const Stream& s) : m_Stream(s) {}
+
+    void operator()(T* ptr) noexcept {
+        allocator<T>::template deallocate<allocatorPolicy::Device>(ptr, m_Stream);
     }
 };
 
-template <typename T>
+template <class T>
 struct PinnedDeleter {
-    void operator()(T* ptr) const noexcept {
-        if (ptr) allocator<T>::template deallocate<allocatorPolicy::Pinned>(ptr);
+    void operator()(T* ptr) noexcept {
+        allocator<T>::template deallocate<allocatorPolicy::Pinned>(ptr, Stream{});
     }
 };
 
-template <typename T>
+template <class T>
 struct ManagedDeleter {
-    void operator()(T* ptr) const noexcept {
-        if (ptr) allocator<T>::template deallocate<allocatorPolicy::Managed>(ptr);
+    void operator()(T* ptr) noexcept {
+        allocator<T>::template deallocate<allocatorPolicy::Managed>(ptr, Stream{});
     }
 };
-
 }  // namespace cudalern

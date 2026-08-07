@@ -20,6 +20,8 @@ constexpr std::string errMessagePrefix = " Error Code:";
 #define CUDALERN_TRACE(...) BENCHTOOLS_TRACE(__VA_ARGS__)
 #define CUDALERN_WARN(...) BENCHTOOLS_WARN(__VA_ARGS__)
 
-#define CUDALERN_ERROR_MESSAGE(x, err) (x + errMessagePrefix + std::to_string(err))
+#define CUDALERN_ERROR_MESSAGE(x, err)                                              \
+    CUDALERN_ERR(std::string(__FILE__) + " "s + std::to_string(__LINE__) + " "s + std::string(x) + \
+     errMessagePrefix + std::to_string(err))
 
 }  // namespace cudalern

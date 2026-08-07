@@ -19,15 +19,15 @@ namespace internal {
     [[nodiscard]] __host__ cudalernErr setDevice(int deviceID) noexcept {
         auto err = cudaSetDevice(deviceID);
         if (err)
-            CUDALERN_ERR(CUDALERN_ERROR_MESSAGE("Failed to set device! ", err));
+            CUDALERN_ERROR_MESSAGE("Failed to set device! ", err);
         else
-            CUDALERN_INFO("Device is now set to: ");
+            CUDALERN_INFO("Device is now set to: " + std::to_string(deviceID));
         return err;
     }
 
     __host__ void InitializeContext(int device) {
         [[maybe_unused]] auto err = setDevice(device);
-        if (err) CUDALERN_ERR(CUDALERN_ERROR_MESSAGE("Failed to set device! ", err));
+        if (err) CUDALERN_ERROR_MESSAGE("Failed to set device! ", err);
 
         CUDALERN_INFO("Initializing context for device: " + std::to_string(device));
 
@@ -35,11 +35,11 @@ namespace internal {
         Stream stream{};
         err = cudaLaunchKernel((void*)kernel::emptyCall, 1, 1, nullptr, 0, stream);
         if (err)
-            CUDALERN_ERR(CUDALERN_ERROR_MESSAGE("Failed to warmup the kernel! ", err));
+            CUDALERN_ERROR_MESSAGE("Failed to warmup the kernel! ", err);
 
         cudaDeviceSynchronize();
         if (err)
-            CUDALERN_ERR(CUDALERN_ERROR_MESSAGE("Failed to synch the device! ", err));
+            CUDALERN_ERROR_MESSAGE("Failed to synch the device! ", err);
 
         CUDALERN_INFO(format(DeviceInfo::Properties(cudalern::internal::DEFAULT_DEVICE)));
     }
@@ -49,7 +49,7 @@ DeviceProperties::DeviceProperties(int device) noexcept {
 
     m_deviceID = device;
     auto err = cudaGetDeviceProperties(&m_DeviceProps, device);
-    if (err) CUDALERN_ERR(CUDALERN_ERROR_MESSAGE("Failed to get device props!", err));
+    if (err) CUDALERN_ERROR_MESSAGE("Failed to get device props!", err);
 
     m_name = m_DeviceProps.name;
     m_totalGlobalMem = m_DeviceProps.totalGlobalMem;
@@ -73,8 +73,8 @@ DeviceProperties::DeviceProperties(int device) noexcept {
 DeviceMemoryState::DeviceMemoryState(int device) noexcept {
     auto err = cudaMemGetInfo(&m_FreeAmount, &m_TotalAmount);
     if (err)
-        CUDALERN_ERR(CUDALERN_ERROR_MESSAGE(
-            "Failed to retrieve memory info from the current context device", err));
+        CUDALERN_ERROR_MESSAGE(
+            "Failed to retrieve memory info from the current context device", err);
 
     m_UsedAmount = m_TotalAmount - m_FreeAmount;
 }

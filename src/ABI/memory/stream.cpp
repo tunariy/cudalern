@@ -13,9 +13,7 @@ struct StreamDeleter {
     void operator()(cudaStream_t* ptr) const noexcept {
         if (ptr && *ptr) {
             auto err = cudaStreamDestroy(*ptr);
-            if (err)
-                CUDALERN_CRITICAL(
-                    CUDALERN_ERROR_MESSAGE("Failed to destroy stream", err));
+            if (err) CUDALERN_ERROR_MESSAGE("Failed to destroy stream", err);
             return;
         }
     }

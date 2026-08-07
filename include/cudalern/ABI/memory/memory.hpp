@@ -46,9 +46,8 @@ template <class T>
 [[nodiscard]] T* allocateDevice(std::size_t size,
                                 cudaStream_t stream = nullptr) noexcept {
     T* temp;
-    auto err = cudaMalloc(&temp, size * sizeof(T));
-    if (err)
-        CUDALERN_CRITICAL(CUDALERN_ERROR_MESSAGE("Failed to allocate at device! ", err));
+    auto err = cudaMallocAsync(&temp, size * sizeof(T), stream);
+    if (err) CUDALERN_ERROR_MESSAGE("Failed to allocate at device! ", err);
     return (!err ? temp : nullptr);
 }
 
@@ -58,8 +57,7 @@ template <class T>
                                 cudaStream_t stream = nullptr) noexcept {
     T* temp;
     auto err = cudaMallocHost(&temp, size * sizeof(T));
-    if (err)
-        CUDALERN_CRITICAL(CUDALERN_ERROR_MESSAGE("Failed to allocate at host! ", err));
+    if (err) CUDALERN_ERROR_MESSAGE("Failed to allocate at host! ", err);
     return (!err ? temp : nullptr);
 }
 
@@ -69,8 +67,7 @@ template <class T>
                                  cudaStream_t stream = nullptr) noexcept {
     T* temp;
     auto err = cudaMallocManaged(&temp, size * sizeof(T));
-    if (err)
-        CUDALERN_CRITICAL(CUDALERN_ERROR_MESSAGE("Failed to allocate pinned! ", err));
+    if (err) CUDALERN_ERROR_MESSAGE("Failed to allocate pinned! ", err);
     return (!err ? temp : nullptr);
 }
 
@@ -78,25 +75,21 @@ template <class T>
     requires(CudaCompatible<T>)
 void deallocateDevice(const T* ptr, cudaStream_t stream = nullptr) {
     auto err = cudaFreeAsync((void*)ptr, stream);
-    if (err)
-        CUDALERN_CRITICAL(
-            CUDALERN_ERROR_MESSAGE("Failed to free at device address!", err));
+    if (err) CUDALERN_ERROR_MESSAGE("Failed to free at device address!", err);
 }
 
 template <class T>
     requires(CudaCompatible<T>)
 void deallocatePinned(const T* ptr) {
     auto err = cudaFreeHost((void*)ptr);
-    if (err)
-        CUDALERN_CRITICAL(CUDALERN_ERROR_MESSAGE("Failed to free at host address!", err));
+    if (err) CUDALERN_ERROR_MESSAGE("Failed to free at host address!", err);
 }
 
 template <class T>
     requires(CudaCompatible<T>)
 void deallocateManaged(const T* ptr) {
     auto err = cudaFree((void*)ptr);
-    if (err)
-        CUDALERN_CRITICAL(CUDALERN_ERROR_MESSAGE("Failed to free at host address!", err));
+    if (err) CUDALERN_ERROR_MESSAGE("Failed to free at host address!"s, err);
 }
 
 template <class T>
@@ -127,9 +120,7 @@ template <class T>
         break;
     }
     }
-    if (err)
-        CUDALERN_CRITICAL(
-            CUDALERN_ERROR_MESSAGE("Memcpy failed for: " + format(copyKind) + " ", err));
+    if (err) CUDALERN_ERROR_MESSAGE("Memcpy failed for: " + format(copyKind) + " ", err);
     return err;
 }
 
